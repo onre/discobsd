@@ -108,6 +108,10 @@ usage:  fputs("usage: kconfig [-gp] sysname\n", stderr);
         stm32_ioconf();
         break;
 
+    case ARCH_MK64:
+	mk64_ioconf();
+	break;
+      
     default:
         printf("Specify architecture, e.g. ``architecture pic32''\n");
         exit(1);
