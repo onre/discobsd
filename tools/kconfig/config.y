@@ -164,6 +164,9 @@ Config_spec:
             } else if (strcmp($2, "stm32") == 0) {
                 arch = ARCH_STM32;
                 archname = "stm32";
+            } else if (strcmp($2, "mk64") == 0) {
+                arch = ARCH_MK64;
+                archname = "mk64";
             } else
                 yyerror("Unknown architecture");
         }

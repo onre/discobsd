@@ -106,9 +106,13 @@ installfs:
 		@[ -f $(FSIMG) ] || $(MAKE) $(FSIMG)
 		sudo dd bs=32k if=$(FSIMG) of=$(SDCARD)
 
+compile_commands.json:
+		compiledb -n make MACHINE=$(MACHINE) MACHINE_ARCH=$(MACHINE_ARCH) all
+
 .PHONY:		all build distribution release tools kernel symlinks \
 		${FSIMG} fs installfs \
 		clean cleantools cleanfs cleanall
 
 # Architecture-specific debugging and loading.
 -include sys/${MACHINE}/Makefile.inc
+ 

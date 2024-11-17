@@ -47,6 +47,8 @@ GCCPREFIX!=if [ x"${MACHINE_ARCH}" = x"arm" ] ; then \
 		echo "/does/not/exist" ; \
 	fi
 
+GCCPREFIX=/home/esp/.arduino15/packages/teensy/tools/teensy-compile/11.3.1/arm/bin/arm-none-eabi
+
 CC!=	if [ x"${MACHINE_ARCH}" = x"arm" ] ; then \
 		echo "${GCCPREFIX}-gcc -mcpu=cortex-m4 -mabi=aapcs -mlittle-endian -mthumb -mfloat-abi=soft -nostdinc -I${TOPSRC}/include ${INCLUDES}" ; \
 	elif [ x"${MACHINE_ARCH}" = x"mips" ] ; then \

@@ -482,6 +482,9 @@ makefile(void)
             fprintf(ofp, " -D%s_INVERT=%d", sig->sig_name, sig->sig_invert);
             break;
 
+	case ARCH_MK64:
+	    break;
+	  
         default:
             printf("architecture type must be specified\n");
             exit(1);

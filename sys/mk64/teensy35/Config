@@ -1,0 +1,58 @@
+#
+# Teensy 3.5
+# ==========
+#
+# More information: https://www.pjrc.com/store/teensy35.html
+#
+# To build the kernel, use:
+#   cd sys/mk64/teensy35
+#   kconfig Config
+#   make clean
+#   make
+#
+# Format of this file is described on page:
+# http://retrobsd.org/wiki/doku.php/doc/kconfig
+#
+architecture    "mk64"
+cpu             "MK64FX512"               # Processor variant
+board           "TEENSY35"               # Board type
+ldscript        "teensy35/mk64fx512.ld" # Linker script
+
+# Standard system options
+options         "CPU_KHZ=120000"            # Oscillator frequency of CPU core
+options         "BUS_KHZ=60000"             # Frequency of peripheral bus
+options         "HALTREBOOT"                # If halted, press key to reboot
+# options         "BSP"                       # Board support package
+
+# Root filesystem at /dev/sd0a, swap at /dev/sd0b
+config          unix    root on sd0a
+                        swap on sd0b
+
+### 17112024, early: disable everything and try to blink a led or bleep the piezo
+
+# Serial UART ports
+
+# TODO: figure out whether it's possible to somehow run the USB thing at the same time
+# meanwhile just use a hw uart
+
+#device          uart1                       # USART1
+#device          uart2                       # USART2 as console
+#device          uart3                       # USART3
+#device          uart4                       # UART4
+#device          uart5                       # UART5
+#device          uart6                       # USART6
+#options         "UART_BAUD=115200"          # default speed
+
+# Use USART2 Virtual Com Port as serial console
+#options         "CONS_MAJOR=UART_MAJOR"     # UART device
+#options         "CONS_MINOR=1"              # uart2 is /dev/tty1
+
+# SPI port
+#controller      spi2                        # SPI2 port
+
+# MicroSD card
+#device          sd0     at spi2             # SD card uses SPI2 port
+#options         "SPI_SD_ENABLED"            # Enable SPI-based SD card
+#options         "NSD=1"                     # One disk on SPI2.
+
+options         "TEENSY_LED_KERNEL"	     # LED is always on pin 13 aka PORTC5
