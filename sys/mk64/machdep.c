@@ -113,6 +113,12 @@ daddr_t dumplo = (daddr_t) 1024;
  * Machine dependent startup code
  */
 void startup() {
+    /**
+     * wait for things to settle a bit. this could probably be in the
+     * startup_xyz.c as well but now it is here.
+     */
+    mdelay(1000);
+
     /* Enable all configurable fault handlers. */
     arm_enable_fault(MM_FAULT_ENABLE);
     arm_enable_fault(BF_FAULT_ENABLE);
