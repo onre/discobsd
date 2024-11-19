@@ -270,7 +270,7 @@ static int usbuartprobe(struct conf_device *config) {
     printf("\n");
 
     /* Initialize the device. */
-    usbuartttys[0].t_addr = (caddr_t) 2588; /* sorry */
+
     if (!is_console)
         usbuartinit(unit);
 
