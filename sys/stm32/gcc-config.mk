@@ -4,7 +4,7 @@
 _HOST_OSNAME!=	uname -s
 
 
-ARM_GCC_PREFIX= /home/esp/.arduino15/packages/teensy/tools/teensy-compile/11.3.1/arm/bin/arm-none-eabi-
+ARM_GCC_PREFIX= /home/esp/.arduino15/packages/teensy/tools/teensy-compile/11.3.1/arm/bin/arm-none-eabi
 
 ASDFARM_GCC_PREFIX!=if [ x"${_HOST_OSNAME}" = x"OpenBSD" ] ; then \
 			echo "/usr/local/bin/arm-none-eabi" ; \

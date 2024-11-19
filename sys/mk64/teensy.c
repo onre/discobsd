@@ -14,6 +14,33 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-void teensy_led_init(void);
-void teensy_led_on(void);
-void teensy_led_off(void);
+#ifdef KERNEL
+
+#    include <machine/mk64fx512.h>
+#    include <machine/teensy.h>
+
+#    ifdef TEENSY35
+
+/**
+ * this is a      ######   #####  #######
+ * honest attempt #     # #     # #
+ * at trying to   #     # #       #
+ * not constantly ######  #        #####
+ * forget which   #       #             #
+ * pin the LED is #       #     # #     #
+ * connected to   #        #####   #####
+ */
+
+void teensy_led_init(void) {
+    PORTC_PCR5 = PORT_PCR_MUX(1) | PORT_PCR_DSE | PORT_PCR_SRE;
+    GPIOC_PDDR |= TEENSY_LED_PIN_MASK;
+    GPIOC_PSOR |= TEENSY_LED_PIN_MASK;
+}
+
+void teensy_led_on(void) { GPIOC_PSOR |= TEENSY_LED_PIN_MASK; }
+
+void teensy_led_off(void) { GPIOC_PCOR |= TEENSY_LED_PIN_MASK; }
+
+#    endif /* TEENSY35 */
+
+#endif /* KERNEL */

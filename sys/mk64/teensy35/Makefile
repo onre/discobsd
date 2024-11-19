@@ -1,12 +1,17 @@
 PARAM = -DTEENSY35
 PARAM += -DMK64FX512
-
-PARAM += -DTEENSY_LED_KERNEL=LED1
+PARAM += -DUSBUART_ENABLED
+PARAM += -DTEENSY_LED_KERNEL
+PARAM += -DCONS_MINOR=0
+PARAM += -DCONS_MAJOR=UARTUSB_MAJOR
 PARAM += -DHALTREBOOT
+PARAM += -DUSB_SERIAL_UART
+PARAM += -DUSB_SERIAL
+PARAM += -DF_BUS=60000000UL
+PARAM += -DF_CPU=120000000UL
 PARAM += -DBUS_KHZ=60000
 PARAM += -DCPU_KHZ=120000
 LDSCRIPT = "teensy35/mk64fx512.ld"
-DEBUG = -g
 #
 # Makefile for DiscoBSD, mk64 target
 #
@@ -51,7 +56,9 @@ OBJS = exec_aout.o exec_conf.o exec_elf.o exec_script.o exec_subr.o \
 	ufs_namei.o ufs_subr.o ufs_syscalls.o ufs_syscalls2.o \
 	vfs_vnops.o vm_sched.o vm_swap.o vm_swp.o machdep.o mem.o \
 	mk64fx512.o startup_mk64fx512.o clock.o cons.o devsw.o fault.o \
-	signal.o swap.o syscall.o sysctl.o systick.o uart.o 
+	signal.o swap.o syscall.o sysctl.o systick.o usb_uart.o teensy.o \
+	teensy_usb_desc.o teensy_usb_dev.o teensy_usb_mem.o \
+	teensy_usb_serial.o memset.o locore.o sys_ultoa.o 
 
 CFILES = $S/kern/exec_aout.c $S/kern/exec_conf.c $S/kern/exec_elf.c \
 	$S/kern/exec_script.c $S/kern/exec_subr.c $S/kern/init_main.c \
@@ -73,7 +80,10 @@ CFILES = $S/kern/exec_aout.c $S/kern/exec_conf.c $S/kern/exec_elf.c \
 	$S/mk64/mem.c $S/mk64/mk64fx512.c $S/mk64/startup_mk64fx512.c \
 	$S/mk64/clock.c $S/mk64/cons.c $S/mk64/devsw.c $S/mk64/fault.c \
 	$S/mk64/signal.c $S/mk64/swap.c $S/mk64/syscall.c \
-	$S/mk64/sysctl.c $S/mk64/systick.c $S/mk64/uart.c swapunix.c 
+	$S/mk64/sysctl.c $S/mk64/systick.c $S/mk64/usb_uart.c \
+	$S/mk64/teensy.c $S/mk64/teensy_usb_desc.c \
+	$S/mk64/teensy_usb_dev.c $S/mk64/teensy_usb_mem.c \
+	$S/mk64/teensy_usb_serial.c $S/mk64/sys_ultoa.c swapunix.c 
 
 # load lines for config "xxx" will be emitted as:
 # xxx: ${SYSTEM_DEP} swapxxx.o
@@ -85,8 +95,12 @@ SYSTEM_DEP=	Makefile ioconf.c machine sys .deps ${SYSTEM_OBJ}
 SYSTEM_LD_HEAD=	sh $S/conf/newvers.sh > vers.c; ${CC} ${CFLAGS} -c vers.c; rm -f $@
 SYSTEM_LD=	-@echo ${LD} ${LDFLAGS} '$${SYSTEM_OBJ}' vers.o -o $@ ${LDADD}; \
 		${LD} ${LDFLAGS} ${SYSTEM_OBJ} vers.o -o $@ ${LDADD}
-SYSTEM_LD_TAIL=	${SIZE} $@; \
-		${OBJDUMP} -d -S $@ > $@.dis
+SYSTEM_LD_TAIL  = ${SIZE} -Ax $@; \
+		  $(OBJCOPY) -O ihex -R .eeprom $@ $@.hex; \
+                  $(OBJDUMP) -d -S $@ > $@.dis; \
+		  ./post.sh
+
+
 
 unix: ${SYSTEM_DEP} swapunix.o
 	${SYSTEM_LD_HEAD}
@@ -105,7 +119,7 @@ clean-all: clean
 	rm -f *.h *.hex ioconf.c swap*.c vers.c
 
 reconfig ioconf.c: Config ../../../tools/kconfig/kconfig
-	../../../tools/kconfig/kconfig -g Config
+	../../../tools/kconfig/kconfig Config
 	${MAKE} clean
 
 machine:
@@ -303,7 +317,31 @@ sysctl.o: $S/mk64/sysctl.c
 systick.o: $S/mk64/systick.c
 	${COMPILE_C}
 
-uart.o: $S/mk64/uart.c
+usb_uart.o: $S/mk64/usb_uart.c
+	${COMPILE_C}
+
+teensy.o: $S/mk64/teensy.c
+	${COMPILE_C}
+
+teensy_usb_desc.o: $S/mk64/teensy_usb_desc.c
+	${COMPILE_C}
+
+teensy_usb_dev.o: $S/mk64/teensy_usb_dev.c
+	${COMPILE_C}
+
+teensy_usb_mem.o: $S/mk64/teensy_usb_mem.c
+	${COMPILE_C}
+
+teensy_usb_serial.o: $S/mk64/teensy_usb_serial.c
+	${COMPILE_C}
+
+memset.o: $S/mk64/memset.S
+	${COMPILE_S}
+
+locore.o: $S/mk64/locore.S
+	${COMPILE_S}
+
+sys_ultoa.o: $S/mk64/sys_ultoa.c
 	${COMPILE_C}
 
 

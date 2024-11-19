@@ -1,1 +1,11 @@
 compile_commands.json
+*.o
+*.dis
+*.hex
+.deps
+*.0
+*.a
+*.elf
+unix
+unix.map
+unix.dis

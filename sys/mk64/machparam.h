@@ -117,6 +117,12 @@
 
 #        define noop() asm volatile("nop")
 
+/**
+ *  the handy debugging method
+ */
+
+#define LED_AND_DEATH() GPIOC_PSOR = (1 << 5); while (1);
+
 /*
  * Wait for something to happen.
  */

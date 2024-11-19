@@ -78,8 +78,9 @@ SECTIONS
 		*(.ARM.exidx* .gnu.linkonce.armexidx.*)
 		__exidx_end = .;
 	} > FLASH
-	_etext = .;
 
+	_etext = .;
+	
 	.usbdescriptortable (NOLOAD) : {
 		/* . = ORIGIN(RAM); */
 		. = ALIGN(512);
@@ -96,6 +97,10 @@ SECTIONS
 		*(.usbbuffers*)
 	} > RAM
 
+	.noinit (NOLOAD) : {
+		*(.noinit*)
+	} > RAM
+
 	.data : AT (_etext) {
 		. = ALIGN(4);
 		_sdata = .; 
@@ -103,10 +108,6 @@ SECTIONS
 		*(.data*)
 		. = ALIGN(4);
 		_edata = .; 
-	} > RAM
-
-	.noinit (NOLOAD) : {
-		*(.noinit*)
 	} > RAM
 
 	.bss : {

@@ -21,6 +21,10 @@ ldscript        "teensy35/mk64fx512.ld" # Linker script
 # Standard system options
 options         "CPU_KHZ=120000"            # Oscillator frequency of CPU core
 options         "BUS_KHZ=60000"             # Frequency of peripheral bus
+options		"F_CPU=120000000UL"
+options		"F_BUS=60000000UL"
+options		"USB_SERIAL"
+options		"USB_SERIAL_UART"
 options         "HALTREBOOT"                # If halted, press key to reboot
 # options         "BSP"                       # Board support package
 
@@ -32,9 +36,7 @@ config          unix    root on sd0a
 
 # Serial UART ports
 
-# TODO: figure out whether it's possible to somehow run the USB thing at the same time
-# meanwhile just use a hw uart
-
+device           usbuart                     # Teensy virtual USB UART
 #device          uart1                       # USART1
 #device          uart2                       # USART2 as console
 #device          uart3                       # USART3
@@ -43,9 +45,8 @@ config          unix    root on sd0a
 #device          uart6                       # USART6
 #options         "UART_BAUD=115200"          # default speed
 
-# Use USART2 Virtual Com Port as serial console
-#options         "CONS_MAJOR=UART_MAJOR"     # UART device
-#options         "CONS_MINOR=1"              # uart2 is /dev/tty1
+options         "CONS_MAJOR=UARTUSB_MAJOR"     # USB UART device
+options         "CONS_MINOR=0"              # posing as uart0
 
 # SPI port
 #controller      spi2                        # SPI2 port

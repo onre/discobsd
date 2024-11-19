@@ -13,45 +13,39 @@
 #include <sys/systm.h>
 #include <machine/uart.h>
 
-struct tty cnttys [1];
+struct tty cnttys[1];
 
-int cnopen(dev_t cn, int flag, int mode)
-{
+int cnopen(dev_t cn, int flag, int mode) {
     dev_t dev = makedev(CONS_MAJOR, CONS_MINOR);
 
     return cdevsw[CONS_MAJOR].d_open(dev, flag, mode);
 }
 
-int cnclose (dev_t cn, int flag, int mode)
-{
+int cnclose(dev_t cn, int flag, int mode) {
     dev_t dev = makedev(CONS_MAJOR, CONS_MINOR);
 
     return cdevsw[CONS_MAJOR].d_close(dev, flag, mode);
 }
 
-int cnread(dev_t cn, struct uio *uio, int flag)
-{
+int cnread(dev_t cn, struct uio *uio, int flag) {
     dev_t dev = makedev(CONS_MAJOR, CONS_MINOR);
 
     return cdevsw[CONS_MAJOR].d_read(dev, uio, flag);
 }
 
-int cnwrite(dev_t cn, struct uio *uio, int flag)
-{
+int cnwrite(dev_t cn, struct uio *uio, int flag) {
     dev_t dev = makedev(CONS_MAJOR, CONS_MINOR);
 
     return cdevsw[CONS_MAJOR].d_write(dev, uio, flag);
 }
 
-int cnselect(dev_t cn, int rw)
-{
+int cnselect(dev_t cn, int rw) {
     dev_t dev = makedev(CONS_MAJOR, CONS_MINOR);
 
     return cdevsw[CONS_MAJOR].d_select(dev, rw);
 }
 
-int cnioctl(dev_t cn, u_int cmd, caddr_t addr, int flag)
-{
+int cnioctl(dev_t cn, u_int cmd, caddr_t addr, int flag) {
     dev_t dev = makedev(CONS_MAJOR, CONS_MINOR);
 
     return cdevsw[CONS_MAJOR].d_ioctl(dev, cmd, addr, flag);
@@ -60,8 +54,7 @@ int cnioctl(dev_t cn, u_int cmd, caddr_t addr, int flag)
 /*
  * Put a symbol on console terminal.
  */
-void cnputc(char c)
-{
+void cnputc(char c) {
     if (cdevsw[CONS_MAJOR].r_write) {
         dev_t dev = makedev(CONS_MAJOR, CONS_MINOR);
 
@@ -69,17 +62,16 @@ void cnputc(char c)
     } else {
         putc(c, &cdevsw[CONS_MAJOR].d_ttys[CONS_MINOR].t_outq);
         ttstart(&cdevsw[CONS_MAJOR].d_ttys[CONS_MINOR]);
-        ttyflush(&cdevsw[CONS_MAJOR].d_ttys[CONS_MINOR],0);
+        ttyflush(&cdevsw[CONS_MAJOR].d_ttys[CONS_MINOR], 0);
     }
-    if(c=='\n')
+    if (c == '\n')
         cnputc('\r');
 }
 
 /*
  * Receive a symbol from console terminal.
  */
-int cngetc()
-{
+int cngetc() {
     if (cdevsw[CONS_MAJOR].r_read) {
         dev_t dev = makedev(CONS_MAJOR, CONS_MINOR);
 

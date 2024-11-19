@@ -74,6 +74,9 @@ __attribute__((always_inline)) static __inline void wfi(void) {
 #    define SCB_SHCSR_BUSFAULTENA ((unsigned int) 1 << 17)
 #    define SCB_SHCSR_USGFAULTENA ((unsigned int) 1 << 18)
 
+#    define SCB_ICSR_PENDSVSET_MASK ((unsigned int) 1 << 28)
+#    define SCB_CCR_STKALIGN_MASK ((unsigned int) 1 << 9)
+
 #    define SVCALL_IRQ 11
 #    define PENDSV_IRQ 14
 #    define SYSTICK_IRQ 15

@@ -18,7 +18,6 @@ PARAM += -DHALTREBOOT
 PARAM += -DBUS_KHZ=48000
 PARAM += -DCPU_KHZ=168000
 LDSCRIPT = "f405weactcore/STM32F405RGTX.ld"
-DEBUG = -g
 #
 # Makefile for DiscoBSD, stm32 target
 #

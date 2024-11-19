@@ -23,10 +23,11 @@
 #include <sys/tty.h>
 
 #include <machine/fault.h>
-#include <machine/uart.h>
+#include <machine/usb_uart.h>
 #include <machine/systick.h>
 
 #if defined(TEENSY_LED_KERNEL)
+#    include <machine/teensy.h>
 #    define LED_KERNEL_INIT() teensy_led_init()
 #    define LED_KERNEL_ON() teensy_led_on()
 #    define LED_KERNEL_OFF() teensy_led_off()
@@ -35,6 +36,21 @@
 #    define LED_KERNEL_ON()   /* Nothing. */
 #    define LED_KERNEL_OFF()  /* Nothing. */
 #endif
+
+#define LED_SWAP_INIT()
+#define LED_SWAP_ON()
+#define LED_SWAP_OFF()
+
+#define LED_TTY_INIT()
+#define LED_TTY_ON()
+#define LED_TTY_OFF()
+
+#define LED_DISK_INIT()
+#define LED_DISK_ON()
+#define LED_DISK_OFF()
+
+#define BUTTON_USER_INIT()
+#define BUTTON_USER_PRESSED() (0) /* no-one presses the button. ever. */
 
 char machine[]      = MACHINE;      /* from <machine/machparam.h> */
 char machine_arch[] = MACHINE_ARCH; /* from <machine/machparam.h> */
@@ -97,7 +113,6 @@ daddr_t dumplo = (daddr_t) 1024;
  * Machine dependent startup code
  */
 void startup() {
-
     /* Enable all configurable fault handlers. */
     arm_enable_fault(MM_FAULT_ENABLE);
     arm_enable_fault(BF_FAULT_ENABLE);
@@ -133,7 +148,7 @@ void startup() {
      * Early setup for console devices.
      */
 #if CONS_MAJOR == UART_MAJOR
-    uartinit(CONS_MINOR);
+    usbuartinit(CONS_MINOR);
 #endif
 
     /*

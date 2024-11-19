@@ -30,15 +30,38 @@
 
 #ifdef KERNEL
 
-#        include <machine/mk64fx512.h>
+#ifndef USBserial_h_
+#define USBserial_h_
 
-unsigned long rtc_get(void) { return RTC_TSR; }
+#include <machine/teensy_usb_desc.h>
 
-void rtc_set(unsigned long t) {
-        RTC_SR  = 0;
-        RTC_TPR = 0;
-        RTC_TSR = t;
-        RTC_SR  = RTC_SR_TCE;
-}
+#if (defined(CDC_STATUS_INTERFACE) && (defined(CDC_DATA_INTERFACE) || defined (SEREMU_INTERFACE))) || defined(USB_DISABLED)
 
-#endif /* KERNEL */
+#include <inttypes.h>
+
+int usb_serial_getchar(void);
+int usb_serial_peekchar(void);
+int usb_serial_available(void);
+int usb_serial_read(void *buffer, uint32_t size);
+void usb_serial_flush_input(void);
+int usb_serial_putchar(uint8_t c);
+int usb_serial_write(const void *buffer, uint32_t size);
+int usb_serial_write_buffer_free(void);
+void usb_serial_flush_output(void);
+void usb_serial_flush_callback(void);
+extern uint32_t usb_cdc_line_coding[2];
+extern volatile uint32_t usb_cdc_line_rtsdtr_millis;
+  extern volatile uint32_t systick_ms;
+extern volatile uint8_t usb_cdc_line_rtsdtr;
+extern volatile uint8_t usb_cdc_transmit_flush_timer;
+extern volatile uint8_t usb_configuration;
+
+#define USB_SERIAL_DTR  0x01
+#define USB_SERIAL_RTS  0x02
+
+
+#endif // CDC_STATUS_INTERFACE && CDC_DATA_INTERFACE
+
+#endif // USBserial_h_
+
+#endif

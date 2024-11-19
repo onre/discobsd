@@ -28,17 +28,28 @@
  * SOFTWARE.
  */
 
-#ifdef KERNEL
+#ifndef _MACHINE_TEENSY_USB_MEM_H
+#define _MACHINE_TEENSY_USB_MEM_H
 
-#        include <machine/mk64fx512.h>
+#include <stdint.h>
 
-unsigned long rtc_get(void) { return RTC_TSR; }
+typedef struct usb_packet_struct {
+	uint16_t len;
+	uint16_t index;
+	struct usb_packet_struct *next;
+	uint8_t buf[64];
+} usb_packet_t;
 
-void rtc_set(unsigned long t) {
-        RTC_SR  = 0;
-        RTC_TPR = 0;
-        RTC_TSR = t;
-        RTC_SR  = RTC_SR_TCE;
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+usb_packet_t * usb_malloc(void);
+void usb_free(usb_packet_t *p);
+
+#ifdef __cplusplus
 }
+#endif
 
-#endif /* KERNEL */
+
+#endif

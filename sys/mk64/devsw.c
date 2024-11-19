@@ -17,6 +17,7 @@
 #include <sys/errno.h>
 #include <machine/spi.h>
 #include <machine/uart.h>
+#include <machine/usb_uart.h>
 
 #include <sys/swap.h>
 
@@ -180,7 +181,13 @@ const struct cdevsw cdevsw[] = {
 #endif
 },
 {   /* 7 - tty usb */
+#if defined(TEENSY35) && defined (USB_SERIAL)
+    usbuartopen,       usbuartclose,      usbuartread,       usbuartwrite,
+    usbuartioctl,      nulldev,        usbuartttys,       usbuartselect,
+    nostrategy,     usbuartgetc,       usbuartputc,
+#else
     NOCDEV
+#endif
 },
 {   /* 8, 9 - pty */
 #ifdef PTY_ENABLED

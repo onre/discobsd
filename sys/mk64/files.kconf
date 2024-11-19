@@ -54,8 +54,8 @@ kern/vm_swp.c                   standard
 
 mk64/machdep.c                 standard
 mk64/mem.c                     standard
-mk64/mk64fx512.c		standard
-mk64/startup_mk64fx512.c	standard
+mk64/mk64fx512.c	       standard
+mk64/startup_mk64fx512.c       standard
 mk64/clock.c                   standard
 mk64/cons.c                    standard
 mk64/devsw.c                   standard
@@ -65,4 +65,13 @@ mk64/swap.c                    standard
 mk64/syscall.c                 standard
 mk64/sysctl.c                  standard
 mk64/systick.c                 standard
-mk64/uart.c		       standard
+mk64/usb_uart.c		       standard
+mk64/teensy.c		       standard
+mk64/teensy_usb_desc.c	       standard
+mk64/teensy_usb_dev.c	       standard
+mk64/teensy_usb_mem.c	       standard
+mk64/teensy_usb_serial.c       standard
+mk64/memset.S		       standard
+mk64/locore.S		       standard
+mk64/sys_ultoa.c	       standard
+

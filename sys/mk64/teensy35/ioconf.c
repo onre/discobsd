@@ -3,6 +3,7 @@
 
 #define C (char *)
 
+extern struct driver usbuartdriver;
 
 struct conf_ctlr conf_ctlr_init[] = {
    /* driver,		unit,	addr,		pri,	flags */
@@ -11,6 +12,7 @@ struct conf_ctlr conf_ctlr_init[] = {
 
 struct conf_device conf_device_init[] = {
    /* driver,		ctlr driver,	unit,	ctlr,	drive,	flags,	pins */
+    { &usbuartdriver,	0,		-2,	0,	-2,	0x0,	{0} },
     { 0 }
 };
 
