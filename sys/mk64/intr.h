@@ -54,6 +54,11 @@
 #define	REGTOIPL(reg) \
 	(unsigned int)((reg) ? (IPL_TOP - ((reg) >> IPL_BITS)) : 0)
 
+static inline void arm_isr_attach(enum IRQ_NUMBER_t irq,
+				  void (*function)(void)) {
+    _VectorsRam[irq + 16] = function;
+}
+
 static inline int
 arm_intr_disable(void)
 {
@@ -146,7 +151,6 @@ spl0(void)
 
 	return old;
 }
-
 #else /* __thumb__ */
 
 #define	splhigh()	arm_intr_disable()

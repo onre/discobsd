@@ -37,9 +37,9 @@ void teensy_led_init(void) {
     GPIOC_PSOR |= TEENSY_LED_PIN_MASK;
 }
 
-void teensy_led_on(void) { GPIOC_PSOR |= TEENSY_LED_PIN_MASK; }
+void teensy_led_on(void) { GPIOC_PSOR = TEENSY_LED_PIN_MASK; }
 
-void teensy_led_off(void) { GPIOC_PCOR |= TEENSY_LED_PIN_MASK; }
+void teensy_led_off(void) { GPIOC_PCOR = TEENSY_LED_PIN_MASK; }
 
 #    endif /* TEENSY35 */
 

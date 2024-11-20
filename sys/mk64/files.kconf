@@ -75,3 +75,8 @@ mk64/memset.S		       standard
 mk64/locore.S		       standard
 mk64/sys_ultoa.c	       standard
 
+mk64/sd.c                      optional sd
+mk64/sdio_card.c               optional sd
+mk64/sdio.c		       optional sdio
+mk64/mk6x_sdio.c	       optional sdio
+

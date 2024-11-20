@@ -30,15 +30,19 @@
 
 #ifdef KERNEL
 
-#        include <machine/mk64fx512.h>
+#    include <machine/mk64fx512.h>
 
 unsigned long rtc_get(void) { return RTC_TSR; }
 
 void rtc_set(unsigned long t) {
-        RTC_SR  = 0;
-        RTC_TPR = 0;
-        RTC_TSR = t;
-        RTC_SR  = RTC_SR_TCE;
+    RTC_SR  = 0;
+    RTC_TPR = 0;
+    RTC_TSR = t;
+    RTC_SR  = RTC_SR_TCE;
+}
+
+void arm_isr_attach(enum IRQ_NUMBER_t irq, void (*function)(void)) {
+    _VectorsRam[irq + 16] = function;
 }
 
 #endif /* KERNEL */

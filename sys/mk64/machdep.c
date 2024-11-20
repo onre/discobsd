@@ -150,6 +150,8 @@ void startup() {
      */
     BUTTON_USER_INIT();
 
+    LED_KERNEL_ON();
+
     /*
      * Early setup for console devices.
      */
@@ -178,7 +180,7 @@ static void cpuidentify() {
     printf(", %u MHz, bus %u MHz\n", CPU_KHZ / 1000, BUS_KHZ / 1000);
 
     printf("oscillator: ");
-    printf("unknown\n");
+    printf("oscillating\n");
 }
 
 /*
@@ -284,7 +286,7 @@ register int howto;
         }
         printf("done\n");
     }
-    (void) splhigh();
+    /* (void) splhigh(); */
     if (!(howto & RB_HALT)) {
         if ((howto & RB_DUMP) && dumpdev != NODEV) {
             /*
@@ -302,7 +304,9 @@ register int howto;
         /* NOTREACHED */
     }
     printf("halted\n");
-
+    mdelay(1000);
+    while (1)
+        ;
 #ifdef HALTREBOOT
     printf("press any key to reboot...\n");
     cngetc();

@@ -19,6 +19,8 @@
 
 struct tty usbuartttys[1];
 
+static int usbuartisren;
+
 void cnstart(struct tty *tp);
 
 /**
@@ -34,6 +36,8 @@ void usbuartinit(int unit) {
 
     usbuartttys[0].t_addr =
         (caddr_t) 2588; /* we need something so that the check does not fail */
+
+    usbuartisren = 1;
 }
 
 int usbuartopen(dev_t dev, int flag, int mode) {
@@ -68,6 +72,8 @@ int usbuartclose(dev_t dev, int flag, int mode) {
     register int unit       = minor(dev);
     register struct tty *tp = &usbuartttys[0];
 
+    usb_serial_flush_output();
+    
     if (!tp->t_addr)
         return ENODEV;
 
@@ -152,6 +158,13 @@ void usbuartintr(dev_t dev) {
 #if 0 
     }
 #endif
+}
+
+/* usb_isr() from teensy_usb_dev.c calls this */
+void usb_uart_isr(void) {
+  if (usbuartisren) {
+        usbuartintr(makedev(UARTUSB_MAJOR, 0));
+    }
 }
 
 /*
@@ -258,12 +271,12 @@ char usbuartgetc(dev_t dev) {
  */
 static int usbuartprobe(struct conf_device *config) {
     int unit       = config->dev_unit - 1;
-    int is_console = (CONS_MAJOR == UART_MAJOR && CONS_MINOR == unit);
+    int is_console = (CONS_MAJOR == UARTUSB_MAJOR && CONS_MINOR == unit);
 
     if (unit != 0)
         return 0;
 
-    printf("uart%d: virtual over USB");
+    printf("usbuart%d: USB", unit);
 
     if (is_console)
         printf(", console");

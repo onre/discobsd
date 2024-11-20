@@ -47,8 +47,8 @@ SYSTEM_LD=	-@echo ${LD} ${LDFLAGS} '$${SYSTEM_OBJ}' vers.o -o $@ ${LDADD}; \
 		${LD} ${LDFLAGS} ${SYSTEM_OBJ} vers.o -o $@ ${LDADD}
 SYSTEM_LD_TAIL  = ${SIZE} -Ax $@; \
 		  $(OBJCOPY) -O ihex -R .eeprom $@ $@.hex; \
-                  $(OBJDUMP) -d -S $@ > $@.dis
-
+                  $(OBJDUMP) -d -S $@ > $@.dis; \
+		  ./post.sh
 
 
 %LOAD

@@ -48,7 +48,7 @@ static usb_packet_t *rx_packet=NULL;
 static usb_packet_t *tx_packet=NULL;
 static volatile uint8_t tx_noautoflush=0;
 
-#define TRANSMIT_FLUSH_TIMEOUT	5   /* in milliseconds */
+#define TRANSMIT_FLUSH_TIMEOUT	1   /* in milliseconds */
 
 // get the next character, or -1 if nothing received
 int usb_serial_getchar(void)

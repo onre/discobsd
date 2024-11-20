@@ -25,7 +25,8 @@ options		"F_CPU=120000000UL"
 options		"F_BUS=60000000UL"
 options		"USB_SERIAL"
 options		"USB_SERIAL_UART"
-options         "HALTREBOOT"                # If halted, press key to reboot
+options		"NMOUNT=4"
+# options         "HALTREBOOT"                # If halted, press key to reboot
 # options         "BSP"                       # Board support package
 
 # Root filesystem at /dev/sd0a, swap at /dev/sd0b
@@ -36,7 +37,7 @@ config          unix    root on sd0a
 
 # Serial UART ports
 
-device           usbuart                     # Teensy virtual USB UART
+device           usbuart1                    # Teensy virtual USB UART
 #device          uart1                       # USART1
 #device          uart2                       # USART2 as console
 #device          uart3                       # USART3
@@ -45,15 +46,12 @@ device           usbuart                     # Teensy virtual USB UART
 #device          uart6                       # USART6
 #options         "UART_BAUD=115200"          # default speed
 
-options         "CONS_MAJOR=UARTUSB_MAJOR"     # USB UART device
-options         "CONS_MINOR=0"              # posing as uart0
+options         "CONS_MAJOR=UARTUSB_MAJOR"   # USB UART device
+options         "CONS_MINOR=0"               # posing as uart0
 
-# SPI port
-#controller      spi2                        # SPI2 port
-
+controller      sdio0
 # MicroSD card
-#device          sd0     at spi2             # SD card uses SPI2 port
-#options         "SPI_SD_ENABLED"            # Enable SPI-based SD card
-#options         "NSD=1"                     # One disk on SPI2.
+device          sd0     at sdio0             # SD card uses SDIO
+options         "NSD=1"                     # One disk on SDIO
 
-options         "TEENSY_LED_KERNEL"	     # LED is always on pin 13 aka PORTC5
+options         "TEENSY_LED_KERNEL"	    # LED is always on pin 13 aka PORTC5

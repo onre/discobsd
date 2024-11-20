@@ -1169,6 +1169,7 @@ void usb_isr(void)
 		USB0_ISTAT = USB_ISTAT_SLEEP;
 	}
 
+	usb_uart_isr();
 }
 
 

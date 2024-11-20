@@ -98,6 +98,8 @@
 #    define USIZE 3072
 #    define SSIZE 2048 /* initial stack size (bytes) */
 
+#define MAXMEM (192*1024-8)
+
 /*
  * Collect kernel statistics by default.
  */

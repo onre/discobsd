@@ -1,10 +1,13 @@
 PARAM = -DTEENSY35
 PARAM += -DMK64FX512
-PARAM += -DUSBUART_ENABLED
+PARAM += -DUSBUART1_ENABLED
+PARAM += -DSDIO_ENABLED
+PARAM += -DSD_ENABLED
 PARAM += -DTEENSY_LED_KERNEL
+PARAM += -DNSD=1
 PARAM += -DCONS_MINOR=0
 PARAM += -DCONS_MAJOR=UARTUSB_MAJOR
-PARAM += -DHALTREBOOT
+PARAM += -DNMOUNT=4
 PARAM += -DUSB_SERIAL_UART
 PARAM += -DUSB_SERIAL
 PARAM += -DF_BUS=60000000UL
@@ -58,7 +61,8 @@ OBJS = exec_aout.o exec_conf.o exec_elf.o exec_script.o exec_subr.o \
 	mk64fx512.o startup_mk64fx512.o clock.o cons.o devsw.o fault.o \
 	signal.o swap.o syscall.o sysctl.o systick.o usb_uart.o teensy.o \
 	teensy_usb_desc.o teensy_usb_dev.o teensy_usb_mem.o \
-	teensy_usb_serial.o memset.o locore.o sys_ultoa.o 
+	teensy_usb_serial.o memset.o locore.o sys_ultoa.o sd.o \
+	sdio_card.o sdio.o mk6x_sdio.o 
 
 CFILES = $S/kern/exec_aout.c $S/kern/exec_conf.c $S/kern/exec_elf.c \
 	$S/kern/exec_script.c $S/kern/exec_subr.c $S/kern/init_main.c \
@@ -83,7 +87,9 @@ CFILES = $S/kern/exec_aout.c $S/kern/exec_conf.c $S/kern/exec_elf.c \
 	$S/mk64/sysctl.c $S/mk64/systick.c $S/mk64/usb_uart.c \
 	$S/mk64/teensy.c $S/mk64/teensy_usb_desc.c \
 	$S/mk64/teensy_usb_dev.c $S/mk64/teensy_usb_mem.c \
-	$S/mk64/teensy_usb_serial.c $S/mk64/sys_ultoa.c swapunix.c 
+	$S/mk64/teensy_usb_serial.c $S/mk64/sys_ultoa.c $S/mk64/sd.c \
+	$S/mk64/sdio_card.c $S/mk64/sdio.c $S/mk64/mk6x_sdio.c \
+	swapunix.c 
 
 # load lines for config "xxx" will be emitted as:
 # xxx: ${SYSTEM_DEP} swapxxx.o
@@ -99,7 +105,6 @@ SYSTEM_LD_TAIL  = ${SIZE} -Ax $@; \
 		  $(OBJCOPY) -O ihex -R .eeprom $@ $@.hex; \
                   $(OBJDUMP) -d -S $@ > $@.dis; \
 		  ./post.sh
-
 
 
 unix: ${SYSTEM_DEP} swapunix.o
@@ -342,6 +347,18 @@ locore.o: $S/mk64/locore.S
 	${COMPILE_S}
 
 sys_ultoa.o: $S/mk64/sys_ultoa.c
+	${COMPILE_C}
+
+sd.o: $S/mk64/sd.c
+	${COMPILE_C}
+
+sdio_card.o: $S/mk64/sdio_card.c
+	${COMPILE_C}
+
+sdio.o: $S/mk64/sdio.c
+	${COMPILE_C}
+
+mk6x_sdio.o: $S/mk64/mk6x_sdio.c
 	${COMPILE_C}
 
 
