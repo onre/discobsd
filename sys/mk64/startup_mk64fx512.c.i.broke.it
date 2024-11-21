@@ -895,12 +895,12 @@ void ResetHandler(void)
 #else
 	SMC_PMPROT = SMC_PMPROT_AVLP | SMC_PMPROT_ALLS | SMC_PMPROT_AVLLS;
 #endif
-
     
 	// TODO: do this while the PLL is waiting to lock....
 	while (dest < &_edata) *dest++ = *src++;
 	dest = &_sbss;
 	while (dest < &_ebss) *dest++ = 0;
+
 
 	// default all interrupts to medium priority level
 	for (i=0; i < NVIC_NUM_INTERRUPTS + 16; i++) _VectorsRam[i] = _VectorsFlash[i];
@@ -1030,7 +1030,6 @@ void ResetHandler(void)
     #error "This clock speed isn't supported..."
     #endif
    #endif
-
 
 	// wait for PLL to start using xtal as its input
 	while (!(MCG_S & MCG_S_PLLST)) ;
@@ -1201,7 +1200,6 @@ void ResetHandler(void)
 #error "Error, F_CPU must be 256, 240, 216, 192, 180, 168, 144, 120, 96, 72, 48, 24, 16, 8, 4, or 2 MHz"
 #endif
 
-	
 #if F_CPU > 16000000
 	// switch to PLL as clock source, FLL input = 16 MHz / 512
 	MCG_C1 = MCG_C1_CLKS(0) | MCG_C1_FRDIV(4);
@@ -1245,6 +1243,10 @@ void ResetHandler(void)
 	}
 #endif
 
+	PORTC_PCR5 = PORT_PCR_MUX(1) | PORT_PCR_DSE | PORT_PCR_SRE;
+	GPIOC_PDDR |= (1<<5);
+	GPIOC_PSOR = (1<<5);
+	while(1);
   /**
    * get systick going.
    */
