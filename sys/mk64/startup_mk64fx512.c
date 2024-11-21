@@ -1245,26 +1245,7 @@ void ResetHandler(void)
 	}
 #endif
 
-  /**
-   * get systick going.
-   */
-  SYST_RVR = (F_CPU / 1000) - 1;
-  SYST_CVR = 0;
-  SYST_CSR = SYST_CSR_CLKSOURCE | SYST_CSR_TICKINT | SYST_CSR_ENABLE;
-  SCB_SHPR3 = 0x20200000;  /* Systick = priority 32 */
-
-  __enable_irq();
-
-  /**
-   *  relevant bits from Teensyduino internal init func
-   */
-
-  NVIC_ENABLE_IRQ(IRQ_PORTA);
-  NVIC_ENABLE_IRQ(IRQ_PORTB);
-  NVIC_ENABLE_IRQ(IRQ_PORTC);
-  NVIC_ENABLE_IRQ(IRQ_PORTD);
-  NVIC_ENABLE_IRQ(IRQ_PORTE);
-  //early_irq_init();
+  early_irq_init();
 
   //	flextimer_init();
 
