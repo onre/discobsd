@@ -67,7 +67,7 @@ const int fault_types = sizeof(fault_type) / sizeof(fault_type[0]);
  * Execution of breakpoint instruction (BKPT) with a debugger attached
  * (halt debugging not enabled) and debug monitor exception not enabled.
  */
-void HardFault_Handler(void) {
+void hard_fault_isr(void) {
     __asm volatile(
         "	.syntax	unified		\n\t"
         "	.thumb			\n\t"
@@ -86,7 +86,7 @@ void HardFault_Handler(void) {
  * Violation of access rules defined by MPU configuration.
  * Attempt to execute program code in execute never (XN) region.
  */
-void MemManage_Handler(void) {
+void memmanage_fault_isr(void) {
     __asm volatile(
         "	.syntax	unified		\n\t"
         "	.thumb			\n\t"
@@ -112,7 +112,7 @@ void MemManage_Handler(void) {
  * Unprivileged access to the Private Peripheral Bus (PPB) that
  * violates the default memory access permission.
  */
-void BusFault_Handler(void) {
+void bus_fault_isr(void) {
     __asm volatile(
         "	.syntax	unified		\n\t"
         "	.thumb			\n\t"
@@ -142,7 +142,7 @@ void BusFault_Handler(void) {
  *   Divide by zero;
  *   All unaligned memory accesses.
  */
-void UsageFault_Handler(void) {
+void usage_fault_isr(void) {
     __asm volatile(
         "	.syntax	unified		\n\t"
         "	.thumb			\n\t"
@@ -242,6 +242,15 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     printf("fault entry EXC_RETURN value:\n");
     printf(" lr:\t0x%08x\n", fault_lr);
 
+    while (1) {
+	// keep polling some communication while in fault
+	// mode, so we don't completely die.
+	if (SIM_SCGC4 & SIM_SCGC4_USBOTG) usb_isr();
+	if (SIM_SCGC4 & SIM_SCGC4_UART0) uart0_status_isr();
+	if (SIM_SCGC4 & SIM_SCGC4_UART1) uart1_status_isr();
+	if (SIM_SCGC4 & SIM_SCGC4_UART2) uart2_status_isr();
+    }
+    
     arm_intr_enable();
 
     psignal(u.u_procp, psig);
