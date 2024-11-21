@@ -1245,52 +1245,10 @@ void ResetHandler(void)
 	}
 #endif
 
-  early_irq_init();
+	early_irq_init();
 
-  //	flextimer_init();
+	flextimer_init();
 
-	FTM0_CNT = 0;
-	FTM0_MOD = DEFAULT_FTM_MOD;
-	FTM0_C0SC = 0x28; // MSnB:MSnA = 10, ELSnB:ELSnA = 10
-	FTM0_C1SC = 0x28;
-	FTM0_C2SC = 0x28;
-	FTM0_C3SC = 0x28;
-	FTM0_C4SC = 0x28;
-	FTM0_C5SC = 0x28;
-#if defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MK64FX512__) || defined(__MK66FX1M0__)
-	FTM0_C6SC = 0x28;
-	FTM0_C7SC = 0x28;
-#endif
-#if defined(__MK64FX512__) || defined(__MK66FX1M0__)
-	FTM3_C0SC = 0x28;
-	FTM3_C1SC = 0x28;
-	FTM3_C2SC = 0x28;
-	FTM3_C3SC = 0x28;
-	FTM3_C4SC = 0x28;
-	FTM3_C5SC = 0x28;
-	FTM3_C6SC = 0x28;
-	FTM3_C7SC = 0x28;
-#endif
-	FTM0_SC = FTM_SC_CLKS(1) | FTM_SC_PS(DEFAULT_FTM_PRESCALE);
-	FTM1_CNT = 0;
-	FTM1_MOD = DEFAULT_FTM_MOD;
-	FTM1_C0SC = 0x28;
-	FTM1_C1SC = 0x28;
-	FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(DEFAULT_FTM_PRESCALE);
-#if defined(__MK20DX256__) || defined(__MK64FX512__) || defined(__MK66FX1M0__) || defined(__MKL26Z64__)
-	FTM2_CNT = 0;
-	FTM2_MOD = DEFAULT_FTM_MOD;
-	FTM2_C0SC = 0x28;
-	FTM2_C1SC = 0x28;
-	FTM2_SC = FTM_SC_CLKS(1) | FTM_SC_PS(DEFAULT_FTM_PRESCALE);
-#endif
-#if defined(__MK64FX512__) || defined(__MK66FX1M0__)
-	FTM3_CNT = 0;
-	FTM3_MOD = DEFAULT_FTM_MOD;
-	FTM3_C0SC = 0x28;
-	FTM3_C1SC = 0x28;
-	FTM3_SC = FTM_SC_CLKS(1) | FTM_SC_PS(DEFAULT_FTM_PRESCALE);
-#endif
 	mdelay(20);
 	usb_init();
 	mdelay(280);
