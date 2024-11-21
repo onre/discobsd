@@ -830,6 +830,8 @@ void ResetHandler(void)
 #endif
 	//volatile int count;
 
+	asm("ldr     sp, =_estack");
+	
 #ifdef KINETISK
 	WDOG_UNLOCK = WDOG_UNLOCK_SEQ1;
 	WDOG_UNLOCK = WDOG_UNLOCK_SEQ2;
