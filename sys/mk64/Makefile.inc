@@ -1,4 +1,4 @@
-BOARD?=			teensy35
+BOARD?=		teensy35
 KERNDIR=	${TOPSRC}/sys/mk64/${BOARD}
 KERN=		unix
 
@@ -7,6 +7,10 @@ CONFSCRIPT!=if [ x"${BOARD}" = x"teensy35" ] ; then \
 	else \
 		echo "does/not/exist" ; \
 	fi
+
+reconfig:
+	$(MAKE) -C sys/$(MACHINE) -k clean
+	$(MAKE) -C sys/$(MACHINE) -k reconfig
 
 help:
 	@echo yes, you need it
