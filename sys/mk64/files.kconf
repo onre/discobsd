@@ -65,8 +65,8 @@ mk64/swap.c                    standard
 mk64/syscall.c                 standard
 mk64/sysctl.c                  standard
 mk64/systick.c                 standard
-mk64/usb_uart.c		       standard
-mk64/uart.c		       standard
+mk64/usb_uart.c		       optional usbuart
+mk64/uart.c		       optional	uart
 mk64/teensy.c		       standard
 mk64/teensy_usb_desc.c	       standard
 mk64/teensy_usb_dev.c	       standard

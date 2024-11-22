@@ -37,7 +37,7 @@ config          unix    root on sd0a
 # Serial UART ports
 
 device           usbuart1                    # Teensy virtual USB UART
-device           uart1                       # rx pin 0, tx pin 1
+#device           uart1                       # rx pin 0, tx pin 1
 #device          uart2                       # USART2 as console
 #device          uart3                       # USART3
 #device          uart4                       # UART4

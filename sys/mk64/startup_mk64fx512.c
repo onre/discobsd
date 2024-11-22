@@ -596,10 +596,10 @@ void ResetHandler(void)
 	 *
 	 */
 
-	/* while (dest < &_edata) *dest++ = *src++; */
+	while (dest < &_edata) *dest++ = *src++;
 
 	/*
-	 * we zero-fill the bss segment too.
+	 * 
 	 */
 
 	dest = &_sbss;

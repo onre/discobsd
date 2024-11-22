@@ -36,7 +36,7 @@
 
 __kernel_flash_start    = ORIGIN(FLASH);
 __kernel_flash_end      = ORIGIN(FLASH) + LENGTH(FLASH);
-__kernel_data_start     = ORIGIN(RAM);
+__kernel_data_start     = _sdata;
 __kernel_data_end       = ORIGIN(RAM) + LENGTH(RAM);
 __user_data_start       = ORIGIN(USERRAM);
 __user_data_end         = ORIGIN(USERRAM) + LENGTH(USERRAM);
@@ -44,7 +44,7 @@ __user_data_end         = ORIGIN(USERRAM) + LENGTH(USERRAM);
 u0                      = ORIGIN(U0AREA);
 u                       = ORIGIN(UAREA);
 u_end                   = ORIGIN(UAREA) + LENGTH(UAREA);
-_estack                 = ORIGIN(UAREA) + LENGTH(UAREA);
+_estack                 = ORIGIN(RAM) + LENGTH(RAM);
 
 ENTRY(_VectorsFlash)
 
@@ -97,17 +97,17 @@ SECTIONS
 		*(.usbbuffers*)
 	} > RAM
 
-	.noinit (NOLOAD) : {
-		*(.noinit*)
-	} > RAM
-
-	.data : AT (_etext) {
+	.data : AT (_etext) { 
 		. = ALIGN(4);
 		_sdata = .; 
 		*(.fastrun*)
 		*(.data*)
 		. = ALIGN(4);
 		_edata = .; 
+	} > RAM
+
+	.noinit (NOLOAD) : {
+		*(.noinit*)
 	} > RAM
 
 	.bss : {
@@ -122,7 +122,7 @@ SECTIONS
 		__bss_end__ = .;
 	} > RAM
 
-	_estack = ORIGIN(RAM) + LENGTH(RAM);
+	_estack = u_end;
 	_teensy_model_identifier = 0x1F;
 }
 

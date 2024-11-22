@@ -46,7 +46,7 @@ SYSTEM_LD_HEAD=	sh $S/conf/newvers.sh > vers.c; ${CC} ${CFLAGS} -c vers.c; rm -f
 SYSTEM_LD=	-@echo ${LD} ${LDFLAGS} '$${SYSTEM_OBJ}' vers.o -o $@ ${LDADD}; \
 		${LD} ${LDFLAGS} ${SYSTEM_OBJ} vers.o -o $@ ${LDADD}
 SYSTEM_LD_TAIL  = ${ARM_GCC_PREFIX}-readelf -S $@; \
-		  ${ARM_GCC_PREFIX}-nm -Sn $@|egrep --color=never ' u_| u0_| _[se]|__'; \
+		  ${ARM_GCC_PREFIX}-nm -Sn $@|egrep '[es]data|[es]text|[es]bss|[kernel|user]_data_'; \
 		  $(OBJCOPY) -O ihex -R .eeprom $@ $@.hex; \
                   $(OBJDUMP) -d -S $@ > $@.dis; \
 		  ./post.sh

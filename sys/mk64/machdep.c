@@ -31,6 +31,7 @@
 #    define LED_KERNEL_INIT() teensy_led_init()
 #    define LED_KERNEL_ON() teensy_led_on()
 #    define LED_KERNEL_OFF() teensy_led_off()
+
 #else
 #    define LED_KERNEL_INIT() /* Nothing. */
 #    define LED_KERNEL_ON()   /* Nothing. */
@@ -117,7 +118,7 @@ void startup() {
      * wait for things to settle a bit. this could probably be in the
      * startup_xyz.c as well but now it is here.
      */
-    mdelay(1000);
+    mdelay(2000);
 
     /* Enable all configurable fault handlers. */
     arm_enable_fault(MM_FAULT_ENABLE);
@@ -151,14 +152,26 @@ void startup() {
     BUTTON_USER_INIT();
 
     LED_KERNEL_ON();
-
+    
     /*
      * Early setup for console devices.
      */
 #if CONS_MAJOR == UART_MAJOR
+    uartinit(CONS_MINOR);
+#elif CONS_MAJOR == UARTUSB_MAJOR
     usbuartinit(CONS_MINOR);
 #endif
 
+
+#if 1
+
+    while (1) {
+      led_control(LED_ALL, 1);
+      mdelay(250);
+      led_control(LED_ALL, 0);
+      mdelay(250);
+   }
+#endif
     /*
      * When User button is pressed - boot to single user mode.
      */
@@ -178,7 +191,6 @@ static void cpuidentify() {
     copystr("MK64FX512", cpu_model, sizeof(cpu_model), NULL);
     printf("MK64FX512");
     printf(", %u MHz, bus %u MHz\n", CPU_KHZ / 1000, BUS_KHZ / 1000);
-
     printf("oscillator: ");
     printf("oscillating\n");
 }
@@ -333,6 +345,8 @@ register int howto;
  */
 /**
  * replaced with Teensy implementation. same disclaimer applies.
+ *
+ * as a bonus, here's a microsecond version too.
  */
 
 unsigned int micros(void) {
@@ -343,6 +357,7 @@ unsigned int micros(void) {
     count   = systick_ms;
     istatus = SCB_ICSR; // bit 26 indicates if systick exception pending
     __enable_irq();
+    
     if ((istatus & SCB_ICSR_PENDSTSET) && current > 50)
         count++;
     current = ((F_CPU / 1000) - 1) - current;
@@ -563,7 +578,8 @@ void bcopy(const void *src0, void *dst0, size_t nbytes) {
     unsigned *aligned_dst;
     const unsigned *aligned_src;
 
-    //printf("bcopy (%08x, %08x, %d)\n", src0, dst0, nbytes);
+    printf("bcopy (%08x, %08x, %d)\n", src0, dst0, nbytes);
+    
     /* If the size is small, or either SRC or DST is unaligned,
      * then punt into the byte copy loop.  This should be rare.  */
     if (nbytes >= 4 * sizeof(unsigned) &&

@@ -80,21 +80,13 @@ __attribute__((always_inline)) static __inline void wfi(void) {
 #    define SVCALL_IRQ 11
 #    define PENDSV_IRQ 14
 #    define SYSTICK_IRQ 15
+#    define IRQ_SYSTICK 15 /* d'oh */
 
 int nvic_execution_priority(void);
 unsigned long rtc_get(void);
 void rtc_set(unsigned long);
 
 #    define __NVIC_PRIO_BITS 4
-
-/** 
- * this is ugly. these exist as CPU_KHZ and BUS_KHZ but, well, things.
- *
- * TODO: fixme
- */
-#    define F_CPU 120000000UL
-#    define F_BUS 60000000UL
-
 
 #endif /* KERNEL */
 

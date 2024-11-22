@@ -7,8 +7,8 @@ PARAM += -DTEENSY_LED_KERNEL
 PARAM += -DNSD=1
 PARAM += -DCONS_MINOR=0
 PARAM += -DCONS_MAJOR=UARTUSB_MAJOR
+PARAM += -DUART_BAUD=115200
 PARAM += -DNMOUNT=4
-PARAM += -DUSB_SERIAL_UART
 PARAM += -DUSB_SERIAL
 PARAM += -DF_BUS=60000000UL
 PARAM += -DF_CPU=120000000UL
@@ -31,9 +31,9 @@ DEFS=		${INCLUDES} ${PARAM} -DKERNEL ${DEPFLAGS} -D__MK64FX512__
 CWARNFLAGS=	-Wall
 
 CMACHCPU=	-mcpu=cortex-m4
-CMACHFLAGS=	-mthumb -ffreestanding -fno-builtin -fcommon -ffunction-sections -fdata-sections
-CMACHFLAGS+=	-mfloat-abi=hard -mfpu=fpv4-sp-d16 -mno-unaligned-access -fsingle-precision-constant -nostdlib
-CMACHFLAGS+=	-mabi=aapcs -mlittle-endian
+CMACHFLAGS=	-mthumb -ffreestanding -fno-builtin -fcommon 
+CMACHFLAGS+=	-mfloat-abi=hard -mfpu=fpv4-sp-d16 -fsingle-precision-constant -nostdlib 
+CMACHFLAGS+=	-mabi=aapcs -mlittle-endian # -fdata-sections -ffunction-sections
 CMACHFLAGS+=	${CMACHCPU}
 
 COPTS?=		-O
@@ -101,7 +101,8 @@ SYSTEM_DEP=	Makefile ioconf.c machine sys .deps ${SYSTEM_OBJ}
 SYSTEM_LD_HEAD=	sh $S/conf/newvers.sh > vers.c; ${CC} ${CFLAGS} -c vers.c; rm -f $@
 SYSTEM_LD=	-@echo ${LD} ${LDFLAGS} '$${SYSTEM_OBJ}' vers.o -o $@ ${LDADD}; \
 		${LD} ${LDFLAGS} ${SYSTEM_OBJ} vers.o -o $@ ${LDADD}
-SYSTEM_LD_TAIL  = ${SIZE} -Ax $@; \
+SYSTEM_LD_TAIL  = ${ARM_GCC_PREFIX}-readelf -S $@; \
+		  ${ARM_GCC_PREFIX}-nm -Sn $@|egrep '[es]data|[es]text|[es]bss|[kernel|user]_data_'; \
 		  $(OBJCOPY) -O ihex -R .eeprom $@ $@.hex; \
                   $(OBJDUMP) -d -S $@ > $@.dis; \
 		  ./post.sh
@@ -124,6 +125,7 @@ clean-all: clean
 	rm -f *.h *.hex ioconf.c swap*.c vers.c
 
 reconfig ioconf.c: Config ../../../tools/kconfig/kconfig
+	rm -f Makefile
 	../../../tools/kconfig/kconfig Config
 	${MAKE} clean
 
