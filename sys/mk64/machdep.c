@@ -115,24 +115,16 @@ daddr_t dumplo = (daddr_t) 1024;
  */
 void startup() {
     /**
-     * wait for things to settle a bit. this could probably be in the
-     * startup_xyz.c as well but now it is here.
+     * set some interrupt priorities.
      */
-    mdelay(2000);
-
+    arm_set_irq_prio(SVCALL_IRQ, SPL_HIGH);   /* syscalls */
+    arm_set_irq_prio(SYSTICK_IRQ, SPL_CLOCK); /* clock */
+    arm_set_irq_prio(PENDSV_IRQ, SPL_LEAST);  /* syscalls (wtf?) */
+    
     /* Enable all configurable fault handlers. */
     arm_enable_fault(MM_FAULT_ENABLE);
     arm_enable_fault(BF_FAULT_ENABLE);
     arm_enable_fault(UF_FAULT_ENABLE);
-
-    /* Syscalls (via PendSV) have the lowest interrupt priority. */
-    arm_intr_set_priority(PENDSV_IRQ, IPL_PENDSV);
-
-    /* SVCall exceptions have the highest interrupt priority. */
-    arm_intr_set_priority(SVCALL_IRQ, IPL_SVCALL);
-
-    /* SysTick exceptions have the interrupt priority of IPL_CLOCK. */
-    arm_intr_set_priority(SYSTICK_IRQ, IPL_SYSTICK);
 
     /*
      * Configure LED pins.
@@ -163,15 +155,6 @@ void startup() {
 #endif
 
 
-#if 1
-
-    while (1) {
-      led_control(LED_ALL, 1);
-      mdelay(250);
-      led_control(LED_ALL, 0);
-      mdelay(250);
-   }
-#endif
     /*
      * When User button is pressed - boot to single user mode.
      */

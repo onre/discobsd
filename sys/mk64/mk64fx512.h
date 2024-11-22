@@ -33,60 +33,65 @@
 
 #ifdef KERNEL
 
-#    include "kinetis.h"
+#include <machine/kinetis.h>
 
-__attribute__((always_inline)) static __inline unsigned int
+static inline void arm_attach_isr(enum IRQ_NUMBER_t irq,
+				  void (*function)(void)) {
+    _VectorsRam[irq + 16] = function;
+}
+
+static __inline unsigned int
 get_basepri(void) {
     unsigned int result;
 
-    asm volatile("MRS %0, basepri" : "=r"(result));
-    return (result);
+    asm volatile("mrs %0, basepri" : "=r" (result));
+    return result;
 }
 
-__attribute__((always_inline)) static __inline void
+static __inline void
 set_basepri(unsigned int value) {
-    asm volatile("MSR basepri, %0" : : "r"(value) : "memory");
+    asm volatile("msr basepri, %0" :: "r" (value) : "memory");
 }
 
-__attribute__((always_inline)) static __inline void
+static __inline void
 set_basepri_max(unsigned int value) {
-    asm volatile("MSR basepri_max, %0" : : "r"(value) : "memory");
+    asm volatile("msr basepri_max, %0" :: "r" (value) : "memory");
 }
 
-__attribute__((always_inline)) static __inline void isb(void) {
+static __inline void isb(void) {
     asm volatile("isb 0xF" ::: "memory");
 }
 
-__attribute__((always_inline)) static __inline void dsb(void) {
+static __inline void dsb(void) {
     asm volatile("dsb");
 }
 
-__attribute__((always_inline)) static __inline void wfi(void) {
+static __inline void wfi(void) {
     asm volatile("wfi");
 }
 
-#    define RESTART_ADDR 0xE000ED0C
-#    define READ_RESTART() (*(volatile uint32_t *) RESTART_ADDR)
-#    define WRITE_RESTART(val)                                         \
+#define RESTART_ADDR 0xE000ED0C
+#define READ_RESTART() (*(volatile uint32_t *) RESTART_ADDR)
+#define WRITE_RESTART(val)                                         \
         ((*(volatile uint32_t *) RESTART_ADDR) = (val))
 
-#    define SCB_SHCSR_MEMFAULTENA ((unsigned int) 1 << 16)
-#    define SCB_SHCSR_BUSFAULTENA ((unsigned int) 1 << 17)
-#    define SCB_SHCSR_USGFAULTENA ((unsigned int) 1 << 18)
+#define SCB_SHCSR_MEMFAULTENA ((unsigned int) 1 << 16)
+#define SCB_SHCSR_BUSFAULTENA ((unsigned int) 1 << 17)
+#define SCB_SHCSR_USGFAULTENA ((unsigned int) 1 << 18)
 
-#    define SCB_ICSR_PENDSVSET_MASK ((unsigned int) 1 << 28)
-#    define SCB_CCR_STKALIGN_MASK ((unsigned int) 1 << 9)
+#define SCB_ICSR_PENDSVSET_MASK ((unsigned int) 1 << 28)
+#define SCB_CCR_STKALIGN_MASK ((unsigned int) 1 << 9)
 
-#    define SVCALL_IRQ 11
-#    define PENDSV_IRQ 14
-#    define SYSTICK_IRQ 15
-#    define IRQ_SYSTICK 15 /* d'oh */
+#define SVCALL_IRQ 11
+#define PENDSV_IRQ 14
+#define SYSTICK_IRQ 15
+#define IRQ_SYSTICK 15 /* d'oh */
 
 int nvic_execution_priority(void);
 unsigned long rtc_get(void);
 void rtc_set(unsigned long);
 
-#    define __NVIC_PRIO_BITS 4
+#define __NVIC_PRIO_BITS 4
 
 #endif /* KERNEL */
 

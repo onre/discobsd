@@ -22,9 +22,16 @@
 #include <sys/vm.h>
 
 #include <machine/frame.h>
+#include <machine/intr.h>
 
 /**
  * had to make decisions, opted for Paul's naming.
+ *
+ *               mini-glossary
+ *
+ *         thread mode == user mode
+ *        handler mode == supervisor mode
+ *  
  */
 
 /*
@@ -153,8 +160,7 @@ void syscall(struct trapframe *frame) {
     cnt.v_syscall++;
 #endif
 
-    /* Enable interrupts. */
-    (void) arm_intr_enable();
+    (void) arm_enable_interrupts();
 
     u.u_error = 0;
     u.u_frame = frame;

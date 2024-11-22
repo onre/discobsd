@@ -14,159 +14,120 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#ifndef	_MACHINE_INTR_H_
-#define	_MACHINE_INTR_H_
+#ifndef _MACHINE_INTR_H_
+#define _MACHINE_INTR_H_
 
-#ifdef	KERNEL
+#ifdef KERNEL
 
 #include <machine/atomic.h>
 #include <machine/mk64fx512.h>
 
-/*
- * Logical interrupt priority level: low prio (0) -> high prio (6)
- * Interrupts at or lower than numerical level are blocked.
+/**
+ * DDI0403D chapter B1.5, or how I understood it:
  *
- * Notes:
- * - IPLs are the inverse of the Cortex-M hardware interrupt scheme.
- *     low prio (0b111x.xxxx) -> high prio (0b001x.xxxx), 3 NVIC prio bits
- *     low prio (0b0111.xxxx) -> high prio (0b0001.xxxx), 4 NVIC prio bits
- * - A zero value disables BASEPRI register; IPL levels are 0 -> 6.
- * - PendSV exception is IPL level 0; SVCall exception is IPL level 7.
+ * in ARM, interrupt priority 0 is the highest. Kinetis K series have
+ * four bits of priority in an eight-bit field. the high nibble is the
+ * significant one.  thus, we end up with the following series as the
+ * possible priorities, from highest to lowest:
+ *
+ *  0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240
+ *
+ * this does allow for some creativity when mapping the seven 2.11-BSD
+ * priority levels. let's try with:
+ *
+ *  spl0           240
+ *  splsoftclock   192
+ *  splnet         128
+ *  splbio          64
+ *  spltty          32
+ *  splclock        16
+ *  splhigh          0
+ *
+ * BASEPRI is an interrupt mask, and BASEPRI_MAX is an alias which
+ * prevents one from changing it "in the wrong direction" - as in,
+ * through that alias it can only be decreased in value, which means
+ * that the mask will match more exceptions than it did before the
+ * change. thus BSD spl...() functions should be easy to implement
+ * using it.
+ *
+ * PRIMASK is a one-bit register preventing all exceptions with
+ * configurable priority from executing. it is primarily used for
+ * turning off exceptions. it also has some interesting properties
+ * outlined in "Priority escalation" section of the document, such as
+ * turning SVC calls into hard faults.
+ *
+ * setting FAULTMASK raises priority to -1, making the current
+ * execution thread essentially a hard fault.
+ *
+ * BONUS: other listed cases of exception priority escalation:
+ *
+ *  - non-enabled configurable-priority fault firing
+ *  - exception handler for a configurable-priority fault causes
+ *    another exception of equal or higher (logical) priority
+ *  - exception handler for a configurable-priority fault causes
+ *    an exception of the type it is currently handling
+ *
  */
-#define	IPL_NONE	0	/* Blocks nothing. */
-#define	IPL_SOFTCLOCK	1	/* Blocks low-priority clock processing. */
-#define	IPL_NET		2	/* Blocks network protocol processing. */
-#define	IPL_BIO		3	/* Blocks disk controllers. */
-#define	IPL_TTY		4	/* Blocks terminal multiplexers. */
-#define	IPL_CLOCK	5	/* Blocks high-priority clock processing. */
-#define	IPL_HIGH	6	/* Blocks all interrupt activity. */
 
-#define	IPL_TOP		(IPL_HIGH + 1)	/* +1 since zero disables BASEPRI. */
-#define	IPL_BITS	(8U - __NVIC_PRIO_BITS)	/* MSB prio shift bits. */
+#define SPL_LEAST     240
+#define SPL_SOFTCLOCK 192
+#define SPL_NET       128
+#define SPL_BIO       64
+#define SPL_TTY       32
+#define SPL_CLOCK     16
+#define SPL_HIGH      0
 
-/* Cortex-M core exception/interrupt priority levels. */
-#define	IPL_PENDSV	IPL_NONE	/* PendSV exception at lowest prio. */
-#define	IPL_SVCALL	IPL_TOP		/* SVC exception at highest prio. */
-#define	IPL_SYSTICK	IPL_CLOCK	/* SysTick exception at clock prio. */
-
-#define	IPLTOREG(ipl) \
-	(unsigned char)((ipl) ? (((IPL_TOP - (ipl)) << IPL_BITS) & 0xFFUL) : 0)
-#define	REGTOIPL(reg) \
-	(unsigned int)((reg) ? (IPL_TOP - ((reg) >> IPL_BITS)) : 0)
-
-static inline void arm_isr_attach(enum IRQ_NUMBER_t irq,
-				  void (*function)(void)) {
-    _VectorsRam[irq + 16] = function;
+static inline void arm_enable_interrupts() {
+    __enable_irq();
 }
 
-static inline int
-arm_intr_disable(void)
-{
-	int s = __get_primask();
-	__disable_irq();
-	isb();
-	return s;
+static inline void arm_disable_interrupts() {
+    __disable_irq();
 }
 
-static inline int
-arm_intr_enable(void)
-{
-	int s = __get_primask();
-	__enable_irq();
-	isb();
-	return s;
+static inline void arm_disable_irq(int irq) {
+    NVIC_DISABLE_IRQ(irq);
 }
 
-static inline void
-arm_intr_restore(int s)
-{
-	__set_primask(s);
-	isb();
+static inline void arm_enable_irq(int irq) {
+    NVIC_ENABLE_IRQ(irq);
 }
 
-static inline void
-arm_intr_disable_irq(int irq)
-{
-	NVIC_DISABLE_IRQ(irq);
+/**
+ * prio is an ARM-style priority mask.
+ */
+static inline void arm_set_irq_prio(int irq, int prio) {
+    NVIC_SET_PRIORITY(irq, prio);
 }
 
-static inline void
-arm_intr_enable_irq(int irq)
-{
-	NVIC_ENABLE_IRQ(irq);
+static inline int splraise(int new) {
+    int old;
+
+    old = get_basepri();
+    set_basepri_max(new);
+    return old;
 }
 
-static inline void
-arm_intr_set_priority(int irq, int prio)
-{
-	/*
-	 * This CMSIS function bitshifts prio into the most significant bits
-	 * and expects an inverted prio for the Cortex-M interrupt priority
-	 * scheme (zero has more priority than one), so IPL_TOP - prio.
-	 */
-	/**
-	 *  the version from Teensy behaves similarly.
-	 */
-
-    
-	NVIC_SET_PRIORITY(irq, IPL_TOP - prio);
+static inline void splx(int s) {
+    set_basepri(s);
 }
 
-#ifdef __thumb2__
+static inline int spl0(void) {
+    int old;
 
-static inline int
-splraise(int new)
-{
-	int old;
+    old = get_basepri();
+    set_basepri(SPL_LEAST);
 
-	old = REGTOIPL(get_basepri());
-	set_basepri_max(IPLTOREG(new)); /* was basepri_MAX */
-	isb();
-	
-	return old;
+    return old;
 }
 
-#define	splhigh()	splraise(IPL_HIGH)
-#define	splclock()	splraise(IPL_CLOCK)
-#define	spltty()	splraise(IPL_TTY)
-#define	splnet()	splraise(IPL_NET)
-#define	splbio()	splraise(IPL_BIO)
+#define splhigh()      splraise(SPL_HIGH)
+#define splclock()     splraise(SPL_CLOCK)
+#define spltty()       splraise(SPL_TTY)
+#define splbio()       splraise(SPL_BIO)
+#define splnet()       splraise(SPL_NET)
+#define splsoftclock() splraise(SPL_SOFTCLOCK)
 
-#define	splsoftclock()	splraise(IPL_SOFTCLOCK)
+#endif /* KERNEL */
 
-static inline void
-splx(int s)
-{
-	set_basepri(IPLTOREG(s));
-	isb();
-}
-
-static inline int
-spl0(void)
-{
-	int old;
-
-	old = REGTOIPL(get_basepri());
-	splx(IPL_NONE);
-
-	return old;
-}
-#else /* __thumb__ */
-
-#define	splhigh()	arm_intr_disable()
-#define	splclock()	arm_intr_disable()
-#define	spltty()	arm_intr_disable()
-#define	splnet()	arm_intr_disable()
-#define	splbio()	arm_intr_disable()
-
-#define	splsoftclock()	arm_intr_enable()
-
-#define	splx(s)		arm_intr_restore(s)
-
-#define	spl0()		arm_intr_enable()
-
-#endif
-
-#endif	/* KERNEL */
-
-#endif	/* !_MACHINE_INTR_H_ */
+#endif /* !_MACHINE_INTR_H_ */

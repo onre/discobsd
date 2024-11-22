@@ -503,8 +503,6 @@ void early_irq_init(void) {
 
   __enable_irq();
 
-  NVIC_ENABLE_IRQ(IRQ_SYSTICK);
-
   /**
    *  relevant bits from Teensyduino internal init func
    */
@@ -599,7 +597,7 @@ void ResetHandler(void)
 	while (dest < &_edata) *dest++ = *src++;
 
 	/*
-	 * 
+	 * .... okay, boot once the above disabled, then enable and reboot... 
 	 */
 
 	dest = &_sbss;
@@ -884,6 +882,13 @@ void ResetHandler(void)
 		*(uint32_t *)0x4003E01C = 0;
 	}
 #endif
+	/**
+	 * wait just a bit before jumping in.
+	 *
+	 * (without this you may not get USB)
+	 */
+	mdelay(1000);
+
 	main();
 	asm("cpsid i");
 	asm("movs r0, #0");
@@ -891,7 +896,9 @@ void ResetHandler(void)
 	asm("ldr r0, =__user_data_end");
 	asm("msr PSP, r0");
 	asm("isb");
-	asm("mrs r0, CONTROL");
+	asm("mrs r0, CONTROL"); /* ...thus ARM is guaranteed to start in supervisor mode?
+				 * I suppose that's the only sensible way.
+				 */
 	asm("orrs r0, r0, #0x1");
 	asm("orrs r0, r0, #0x2");
 	asm("cpsie i");
@@ -901,29 +908,6 @@ void ResetHandler(void)
 	asm("bx lr");
 	
 	while (1) ;
-}
-
-#pragma GCC diagnostic pop
-
-int nvic_execution_priority(void)
-{
-	uint32_t priority=256;
-	uint32_t primask, faultmask, basepri, ipsr;
-
-	// full algorithm in ARM DDI0403D, page B1-639
-	// this isn't quite complete, but hopefully good enough
-	__asm__ volatile("mrs %0, faultmask\n" : "=r" (faultmask)::);
-	if (faultmask) return -1;
-	__asm__ volatile("mrs %0, primask\n" : "=r" (primask)::);
-	if (primask) return 0;
-	__asm__ volatile("mrs %0, ipsr\n" : "=r" (ipsr)::);
-	if (ipsr) {
-		if (ipsr < 16) priority = 0; // could be non-zero
-		else priority = NVIC_GET_PRIORITY(ipsr - 16);
-	}
-	__asm__ volatile("mrs %0, basepri\n" : "=r" (basepri)::);
-	if (basepri > 0 && basepri < priority) priority = basepri;
-	return priority;
 }
 
 #endif /* KERNEL */
