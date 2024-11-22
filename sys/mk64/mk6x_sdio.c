@@ -41,10 +41,10 @@
 /* limit of K66 due to errata KINETIS_K_0N65N. */
 const uint32_t MAX_BLKCNT = 0XFFFF;
 
-#define SDHC_PROCTL_DTW_4BIT 0x01
 const uint32_t FIFO_WML = 16;
 const uint32_t CMD8_RETRIES = 3;
 const uint32_t BUSY_TIMEOUT_MS = 1000;
+
 const uint32_t SDHC_IRQSTATEN_MASK =
                SDHC_IRQSTATEN_DMAESEN | SDHC_IRQSTATEN_AC12ESEN |
                SDHC_IRQSTATEN_DEBESEN | SDHC_IRQSTATEN_DCESEN |
@@ -256,7 +256,7 @@ inline int setSdErrorCode(uint8_t code, uint32_t line) {
 }
 
 // ISR
-void mk6x_sdio_isr(void) {
+void sdhc_isr(void) {
   SDHC_IRQSIGEN = 0;
   m_irqstat = SDHC_IRQSTAT;
   SDHC_IRQSTAT = m_irqstat;
@@ -426,7 +426,7 @@ static void initSDHC() {
   // Enable desired IRQSTAT bits.
   SDHC_IRQSTATEN = SDHC_IRQSTATEN_MASK;
 
-  arm_isr_attach(IRQ_SDHC, mk6x_sdio_isr);
+  /* arm_isr_attach(IRQ_SDHC, mk6x_sdio_isr); */
   NVIC_SET_PRIORITY(IRQ_SDHC, 6*16);
   NVIC_ENABLE_IRQ(IRQ_SDHC);
 

@@ -7,6 +7,7 @@
 #include "sd_card_info.h"
 
 #define SD_MAX_INIT_RATE_KHZ 400
+#define SDHC_PROCTL_DTW_4BIT 0x01
 
 #define SDIOCONFIG_FLAG_SET(fl) (m_sdioConfig |= fl)
 #define SDIOCONFIG_FLAG_UNSET(fl) (m_sdioConfig &= ~fl)
