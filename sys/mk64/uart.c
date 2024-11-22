@@ -1,11 +1,12 @@
 /*
- * UART driver for STM32.
+ * UART driver for Kinesis K / Teensy
  *
  * Copyright (c) 1986 Regents of the University of California.
  * All rights reserved.  The Berkeley software License Agreement
  * specifies the terms and conditions for redistribution.
  */
 
+#include <sys/types.h>
 #include <sys/param.h>
 #include <sys/conf.h>
 #include <sys/user.h>
@@ -15,6 +16,7 @@
 #include <sys/kconfig.h>
 
 #include <machine/uart.h>
+#include <machine/kinetis.h>
 
 #define CONCAT(x, y) x##y
 #define BBAUD(x) CONCAT(B, x)
@@ -23,562 +25,485 @@
 #        define UART_BAUD 115200
 #endif
 
-void uartinit(int unit) {};
-
-
-#if 0
-
-/*
- * STM32 USART/UART port.
- */
-struct uart_port {
-        GPIO_TypeDef *port;
-        char port_name;
-        u_long pin;
-};
-
-/*
- * STM32 USART/UART instance.
- */
 struct uart_inst {
-        USART_TypeDef *inst;
-        struct uart_port tx;
-        struct uart_port rx;
-        u_int apb_div;
-        u_int af;
+    KINETISK_UART_t *inst;
+    u_char rx_pin_num;
+    u_char tx_pin_num;
+    volatile u_long *regbase; /* 00 pdor - can be 20, 40, 80, ...
+			       * 04 psor
+			       * 08 pcor
+			       * 0C ptor
+			       * 10 pdir
+			       * 14 pddr
+			       */
+    volatile u_char rx_buffer[RX_BUFFER_SIZE];
+    volatile u_char tx_buffer[TX_BUFFER_SIZE];
+    volatile u_char rx_buffer_head;
+    volatile u_char rx_buffer_tail;
+    volatile u_char tx_buffer_head;
+    volatile u_char tx_buffer_tail;
 };
 
-/*
- * STM32 USART/UART.
- */
-static const struct uart_inst uart[NUART] = {
-#        define PIN0 LL_GPIO_PIN_0
-#        define PIN2 LL_GPIO_PIN_2
-#        define PIN3 LL_GPIO_PIN_3
-#        define PIN6 LL_GPIO_PIN_6
-#        define PIN7 LL_GPIO_PIN_7
-#        define PIN9 LL_GPIO_PIN_9
-#        define PIN10 LL_GPIO_PIN_10
-#        define PIN11 LL_GPIO_PIN_11
-#        define AF7 LL_GPIO_AF_7
-#        define AF8 LL_GPIO_AF_8
-#        ifdef STM32F405xx
-    {USART1, {GPIOA, 'A', PIN9}, {GPIOA, 'A', PIN10}, 2, AF7},
-    {USART2, {GPIOA, 'A', PIN2}, {GPIOA, 'A', PIN3}, 4, AF7},
-    {/* USART3 */},
-    {/* UART4 */},
-    {/* UART5 */},
-    {/* USART6 */},
-#        endif
-#        ifdef STM32F407xx
-    {/* USART1 */},
-    {USART2, {GPIOA, 'A', PIN2}, {GPIOA, 'A', PIN3}, 4, AF7},
-    {/* USART3 */},
-    {/* UART4 */},
-    {/* UART5 */},
-    {/* USART6 */},
-#        endif
-#        ifdef STM32F411xE
-    {/* USART1 */},
-    {USART2, {GPIOA, 'A', PIN2}, {GPIOA, 'A', PIN3}, 2, AF7},
-    {/* none */},
-    {/* none */},
-    {/* none */},
-    {/* USART6 */},
-#        endif
-#        ifdef STM32F412Rx
-    {USART1, {GPIOA, 'A', PIN9}, {GPIOA, 'A', PIN10}, 2, AF7},
-    {/* USART2 */},
-    {/* USART3 */},
-    {/* none */},
-    {/* none */},
-    {/* USART6 */},
-#        endif
-#        ifdef STM32F412Zx
-    {/* USART1 */},
-    {USART2, {GPIOA, 'A', PIN2}, {GPIOA, 'A', PIN3}, 2, AF7},
-    {/* USART3 */},
-    {/* none */},
-    {/* none */},
-    {/* USART6 */},
-#        endif
-#        ifdef STM32F469xx
-    {/* USART1 */},
-    {/* USART2 */},
-    {USART3, {GPIOB, 'B', PIN10}, {GPIOB, 'B', PIN11}, 2, AF7},
-    {/* UART4 */},
-    {/* UART5 */},
-    {USART6, {GPIOC, 'C', PIN6}, {GPIOC, 'C', PIN7}, 2, AF8},
-#        endif
+static struct uart_inst uart[NUART] = {
+#ifdef TEENSY35
+    {&(*(KINETISK_UART_t *) UART0_ADDR), 16, 17, &GPIOB_PDOR},
+#if 0
+    {&(*(KINETISK_UART_t *) UART1_ADDR)},
+    {&(*(KINETISK_UART_t *) UART2_ADDR)},
+    {&(*(KINETISK_UART_t *) UART3_ADDR)},
+    {&(*(KINETISK_UART_t *) UART4_ADDR)},
+    {&(*(KINETISK_UART_t *) UART5_ADDR)}
+#    else
+    {},
+    {},
+    {},
+    {},
+    {}    
+#    endif
+    
+#endif
 };
 
 struct tty uartttys[NUART];
 
-#        if 0  // XXX UART
-static unsigned speed_bps [NSPEEDS] = {
-    0,       50,      75,      150,     200,    300,     600,     1200,
-    1800,    2400,    4800,    9600,    19200,  38400,   57600,   115200,
-    230400,  460800,  500000,  576000,  921600, 1000000, 1152000, 1500000,
-    2000000, 2500000, 3000000, 3500000, 4000000
-};
-#        endif // XXX UART
-
-void cnstart(struct tty *tp);
-
-void USART1_IRQHandler(void) {
-        uartintr(makedev(UART_MAJOR, 0)); /* USART1 */
-}
-
-void USART2_IRQHandler(void) {
-        uartintr(makedev(UART_MAJOR, 1)); /* USART2 */
-}
-
-void USART3_IRQHandler(void) {
-        uartintr(makedev(UART_MAJOR, 2)); /* USART3 */
-}
-
-void UART4_IRQHandler(void) {
-        uartintr(makedev(UART_MAJOR, 3)); /* UART4 */
-}
-
-void UART5_IRQHandler(void) {
-        uartintr(makedev(UART_MAJOR, 4)); /* UART5 */
-}
-
-void USART6_IRQHandler(void) {
-        uartintr(makedev(UART_MAJOR, 5)); /* USART6 */
-}
-
 /*
- * Setup USART/UART.
+ * as NUART is at most less than 8,
+ * we can get away with this. 
  */
+static volatile uint8_t transmitting;
+
+#if 0
+void uart0_status_isr(void) {
+    uartintr(makedev(UART_MAJOR, 0));
+}
+void uart0_error_isr(void) {
+    uartintr(makedev(UART_MAJOR, 0));
+}
+#endif
+
 void uartinit(int unit) {
-        register USART_TypeDef *inst;
-        register GPIO_TypeDef *tx_port;
-        register u_int tx_pin;
-        register GPIO_TypeDef *rx_port;
-        register u_int rx_pin;
-        register u_int apb_div;
-        register u_int af;
+    register KINETISK_UART_t *inst;
+    int divisor;
 
-        if (unit < 0 || unit >= NUART)
-                return;
+    if (unit != 0) {
+        printf("uart: unit != 0 not supported yet\n");
+        return;
+    }
 
-        inst    = uart[unit].inst;
-        tx_port = uart[unit].tx.port;
-        tx_pin  = uart[unit].tx.pin;
-        rx_port = uart[unit].rx.port;
-        rx_pin  = uart[unit].rx.pin;
-        apb_div = uart[unit].apb_div;
-        af      = uart[unit].af;
-
-        /*
-     * Configure and enable USART/UART NVIC interrupts.
-     * Enable GPIO port peripheral clock and USART/UART peripheral clock.
-     */
-        switch (unit) {
-        case 0: /* USART1 */
-#        ifdef USART1
-                arm_intr_set_priority(USART1_IRQn, IPL_TTY);
-                arm_intr_enable_irq(USART1_IRQn);
-
-#                ifdef STM32F405xx
-                /* USART1: APB2 84 MHz AF7: TX on PA.09, RX on PA.10 */
-                LL_GPIO_EnableClock(GPIOA);
-                LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_USART1);
-#                endif
-#                ifdef STM32F412Rx
-                /* USART1: APB2 100 MHz AF7: TX on PA.09, RX on PA.10 */
-                LL_GPIO_EnableClock(GPIOA);
-                LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_USART1);
-#                endif
-
-#        endif /* USART1 */
-                break;
-
-        case 1: /* USART2 */
-#        ifdef USART2
-                arm_intr_set_priority(USART2_IRQn, IPL_TTY);
-                arm_intr_enable_irq(USART2_IRQn);
-
-#                ifdef STM32F405xx
-                /* USART2: APB1 42 MHz AF7: TX on PA.02, RX on PA.03 */
-                LL_GPIO_EnableClock(GPIOA);
-                LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USART2);
-#                endif
-#                ifdef STM32F407xx
-                /* USART2: APB1 42 MHz AF7: TX on PA.02, RX on PA.03 */
-                LL_GPIO_EnableClock(GPIOA);
-                LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USART2);
-#                endif
-#                ifdef STM32F411xE
-                /* USART2: APB1 50 MHz AF7: TX on PA.02, RX on PA.03 */
-                LL_GPIO_EnableClock(GPIOA);
-                LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USART2);
-#                endif
-#                ifdef STM32F412Zx
-                /* USART2: APB1 50 MHz AF7: TX on PA.02, RX on PA.03 */
-                LL_GPIO_EnableClock(GPIOA);
-                LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USART2);
-#                endif
-
-#        endif /* USART2 */
-                break;
-
-        case 2: /* USART3 */
-#        ifdef USART3
-                arm_intr_set_priority(USART3_IRQn, IPL_TTY);
-                arm_intr_enable_irq(USART3_IRQn);
-
-#                ifdef STM32F469xx
-                /* USART3: AHB1/APB1, 45 MHz, AF7, TX on PB.10, RX on PB.11 */
-                LL_GPIO_EnableClock(GPIOB);
-                LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USART3);
-#                endif
-
-#        endif /* USART3 */
-                break;
-
-        case 3: /* UART4 */
-#        ifdef UART4
-                arm_intr_set_priority(UART4_IRQn, IPL_TTY);
-                arm_intr_enable_irq(UART4_IRQn);
-#        endif /* UART4 */
-                break;
-
-        case 4: /* UART5 */
-#        ifdef UART5
-                arm_intr_set_priority(UART5_IRQn, IPL_TTY);
-                arm_intr_enable_irq(UART5_IRQn);
-#        endif /* UART5 */
-                break;
-
-        case 5: /* USART6 */
-#        ifdef USART6
-                arm_intr_set_priority(USART6_IRQn, IPL_TTY);
-                arm_intr_enable_irq(USART6_IRQn);
-
-#                ifdef STM32F469xx
-                /* USART6: AHB1/APB2, 90 MHz, AF8, TX on PC.06, RX on PC.07 */
-                /* USART6: CN12 Ext: 3V3 Pin 1, GND Pin 2, TX Pin 6, RX Pin 8 */
-                LL_GPIO_EnableClock(GPIOC);
-                LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_USART6);
-#                endif
-
-#        endif /* USART6 */
-                break;
-
-        default:
-                break;
+    inst = uart[unit].inst;
+    
+    switch (unit) {
+    case 0:
+    case 1:
+        if (unit == 0) {
+            /* TODO: a fancy abstraction for these. */
+            PORTB_PCR16 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
+                          PORT_PCR_MUX(3);
+            PORTB_PCR17 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
+	    uart[unit].rx_pin_num = 0;
+	    uart[unit].tx_pin_num = 1;
+        } else {
+            PORTB_PCR16 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
+                          PORT_PCR_MUX(3);
+            PORTB_PCR17 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
+	    uart[unit].rx_pin_num = 0;
+	    uart[unit].tx_pin_num = 1;
         }
 
-        /* Config Tx Pin as: Alt func, High Speed, Push pull, Pull up */
-        LL_GPIO_SetPinMode(tx_port, tx_pin, LL_GPIO_MODE_ALTERNATE);
-        LL_GPIO_SetAFPin(tx_port, tx_pin, af);
-        LL_GPIO_SetPinSpeed(tx_port, tx_pin, LL_GPIO_SPEED_FREQ_HIGH);
-        LL_GPIO_SetPinOutputType(tx_port, tx_pin,
-                                 LL_GPIO_OUTPUT_PUSHPULL);
-        LL_GPIO_SetPinPull(tx_port, tx_pin, LL_GPIO_PULL_UP);
-
-        /* Config Rx Pin as: Alt func, High Speed, Push pull, Pull up */
-        LL_GPIO_SetPinMode(rx_port, rx_pin, LL_GPIO_MODE_ALTERNATE);
-        LL_GPIO_SetAFPin(rx_port, rx_pin, af);
-        LL_GPIO_SetPinSpeed(rx_port, rx_pin, LL_GPIO_SPEED_FREQ_HIGH);
-        LL_GPIO_SetPinOutputType(rx_port, rx_pin,
-                                 LL_GPIO_OUTPUT_PUSHPULL);
-        LL_GPIO_SetPinPull(rx_port, rx_pin, LL_GPIO_PULL_UP);
-
-        /* Transmit/Receive, 8 data bit, 1 start bit, 1 stop bit, no parity. */
-        LL_USART_Disable(inst);
-        LL_USART_SetTransferDirection(inst, LL_USART_DIRECTION_TX_RX);
-        LL_USART_ConfigCharacter(inst, LL_USART_DATAWIDTH_8B,
-                                 LL_USART_PARITY_NONE,
-                                 LL_USART_STOPBITS_1);
-        LL_USART_SetBaudRate(inst, SystemCoreClock / apb_div,
-                             LL_USART_OVERSAMPLING_16, UART_BAUD);
-        LL_USART_Enable(inst);
+        divisor = BAUD2DIV(115200);
+	
+        /* fixed 115200 for now */
+	if (divisor < 32) divisor = 32;
+	UART0_BDH = (divisor >> 13) & 0x1F;
+	UART0_BDL = (divisor >> 5) & 0xFF;
+	UART0_C4 = divisor & 0x1F;
+	
+	inst->C1 = UART_C1_ILT;
+	inst->TWFIFO = 2; // tx watermark, causes S1_TDRE to set
+	inst->RWFIFO = 4; // rx watermark, causes S1_RDRF to set
+	inst->PFIFO = UART_PFIFO_TXFE | UART_PFIFO_RXFE;
+	inst->C2 = C2_TX_INACTIVE;
+	NVIC_SET_PRIORITY(IRQ_UART0_STATUS, IRQ_PRIORITY);
+	break;
+    default:
+	printf("uart: wtf\n");
+	return;
+    }
 }
 
 int uartopen(dev_t dev, int flag, int mode) {
-        register struct uart_inst *uip;
-        register struct tty *tp;
-        register int unit = minor(dev);
+    register struct uart_inst *uip;
+    register struct tty *tp;
+    register int unit = minor(dev);
+    u_char c;
 
-        if (unit < 0 || unit >= NUART)
-                return (ENXIO);
+    if (unit < 0 || unit >= NUART)
+	return (ENXIO);
 
-        tp = &uartttys[unit];
-        if (!tp->t_addr)
-                return (ENXIO);
+    tp = &uartttys[unit];
+    if (!tp->t_addr)
+	return (ENXIO);
 
-        uip         = (struct uart_inst *) tp->t_addr;
-        tp->t_oproc = uartstart;
-        if ((tp->t_state & TS_ISOPEN) == 0) {
-                if (tp->t_ispeed == 0) {
-                        tp->t_ispeed = BBAUD(UART_BAUD);
-                        tp->t_ospeed = BBAUD(UART_BAUD);
-                }
-                ttychars(tp);
-                tp->t_state = TS_ISOPEN | TS_CARR_ON;
-                tp->t_flags = ECHO | XTABS | CRMOD | CRTBS | CRTERA |
-                              CTLECH | CRTKIL;
-        }
-        if ((tp->t_state & TS_XCLUDE) && u.u_uid != 0)
-                return (EBUSY);
+    uip         = (struct uart_inst *) tp->t_addr;
+    tp->t_oproc = uartstart;
+    if ((tp->t_state & TS_ISOPEN) == 0) {
+	if (tp->t_ispeed == 0) {
+	    tp->t_ispeed = BBAUD(UART_BAUD);
+	    tp->t_ospeed = BBAUD(UART_BAUD);
+	}
+	ttychars(tp);
+	tp->t_state = TS_ISOPEN | TS_CARR_ON;
+	tp->t_flags = ECHO | XTABS | CRMOD | CRTBS | CRTERA |
+	    CTLECH | CRTKIL;
+    }
+    if ((tp->t_state & TS_XCLUDE) && u.u_uid != 0)
+	return (EBUSY);
 
-        // XXX Clear USART state, then set up new state.
-        LL_USART_Enable(uip->inst);
-        LL_USART_EnableDirectionRx(uip->inst);
-        LL_USART_EnableDirectionTx(uip->inst);
-#        if 0  // XXX
-    reg->sta = 0;
-    reg->brg = PIC32_BRG_BAUD (BUS_KHZ * 1000, speed_bps [tp->t_ospeed]);
-    reg->mode = PIC32_UMODE_PDSEL_8NPAR |
-                PIC32_UMODE_ON;
-    reg->staset = PIC32_USTA_URXEN | PIC32_USTA_UTXEN;
-#        endif // XXX
+    /* C1, S2, C3 are fields in the UART configuration register.
+     * this isn't as bad as it looks.
+     */
+    c = uip->inst->C1;
+    c = (c & ~0x13) | (SERIAL_8N1 & 0x03);
+    uip->inst->C1 = c;
+    c = uip->inst->S2 & ~0x10;
+    uip->inst->S2 = c;
+    c = uip->inst->C3 & ~0x10;
+    uip->inst->C3 = c;
 
-        /* Enable receive interrupt. */
-        LL_USART_EnableIT_RXNE(uip->inst);
-
-        return ttyopen(dev, tp);
+    /* deep breath - hope for the best - activate isr
+     */
+    NVIC_ENABLE_IRQ(IRQ_UART0_STATUS);
+    
+    return ttyopen(dev, tp);
 }
 
 /*ARGSUSED*/
 int uartclose(dev_t dev, int flag, int mode) {
-        register int unit       = minor(dev);
-        register struct tty *tp = &uartttys[unit];
+    register int unit       = minor(dev);
+    register struct tty *tp = &uartttys[unit];
+    
+    if (!tp->t_addr)
+	return ENODEV;
 
-        if (!tp->t_addr)
-                return ENODEV;
-
-        ttywflush(tp);
-        ttyclose(tp);
-        return (0);
+    ttywflush(tp);
+    ttyclose(tp);
+    return (0);
 }
-
 /*ARGSUSED*/
 int uartread(dev_t dev, struct uio *uio, int flag) {
-        register int unit       = minor(dev);
-        register struct tty *tp = &uartttys[unit];
+    register int unit       = minor(dev);
+    register struct tty *tp = &uartttys[unit];
 
-        if (!tp->t_addr)
-                return ENODEV;
+    if (!tp->t_addr)
+	return ENODEV;
 
-        return ttread(tp, uio, flag);
+    return ttread(tp, uio, flag);
 }
 
 /*ARGSUSED*/
 int uartwrite(dev_t dev, struct uio *uio, int flag) {
-        register int unit       = minor(dev);
-        register struct tty *tp = &uartttys[unit];
+    register int unit       = minor(dev);
+    register struct tty *tp = &uartttys[unit];
 
-        if (!tp->t_addr)
-                return ENODEV;
+    if (!tp->t_addr)
+	return ENODEV;
 
-        return ttwrite(tp, uio, flag);
+    return ttwrite(tp, uio, flag);
 }
 
 int uartselect(dev_t dev, int rw) {
-        register int unit       = minor(dev);
-        register struct tty *tp = &uartttys[unit];
+    register int unit       = minor(dev);
+    register struct tty *tp = &uartttys[unit];
 
-        if (!tp->t_addr)
-                return ENODEV;
+    if (!tp->t_addr)
+	return ENODEV;
 
-        return (ttyselect(tp, rw));
+    return (ttyselect(tp, rw));
 }
 
 /*ARGSUSED*/
 int uartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
-        register int unit       = minor(dev);
-        register struct tty *tp = &uartttys[unit];
-        register int error;
+    register int unit       = minor(dev);
+    register struct tty *tp = &uartttys[unit];
+    register int error;
 
-        if (!tp->t_addr)
-                return ENODEV;
+    if (!tp->t_addr)
+	return ENODEV;
 
-        error = ttioctl(tp, cmd, addr, flag);
-        if (error < 0)
-                error = ENOTTY;
-        return (error);
+    error = ttioctl(tp, cmd, addr, flag);
+    if (error < 0)
+	error = ENOTTY;
+    return (error);
 }
 
+/* this receives the "status interrupt" which can be:
+ *
+ * UART_S1_TDRE      transmit data below watermark
+ * UART_S1_TC        transmit complete
+ * UART_S1_IDLE      idle line (what is this?)
+ * UART_S1_RDRF      receive data above watermark
+ * UART_S2_LBKDIF    LIN break detect (?)
+ * UART_S2_RXEDGIF   rx pin active edge
+ *
+ */
 void uartintr(dev_t dev) {
-        register int c;
-        register int unit       = minor(dev);
-        register struct tty *tp = &uartttys[unit];
-        register struct uart_inst *uip;
+    register int c, s;
+    register int unit       = minor(dev);
+    register struct tty *tp = &uartttys[unit];
+    register struct uart_inst *uip;
+    u_char head, tail, n, newhead, avail;
 
-        if (!tp->t_addr)
-                return;
+    if (!tp->t_addr)
+	return;
 
-        uip = (struct uart_inst *) tp->t_addr;
+    uip = (struct uart_inst *) tp->t_addr;
 
-        /* Receive */
-        while (LL_USART_IsActiveFlag_RXNE(uip->inst)) {
-                c = LL_USART_ReceiveData8(uip->inst);
-                ttyinput(c, tp);
-        }
+    /* receive data above watermark OR idle line */
+    if (uip->inst->S1 & (UART_S1_RDRF | UART_S1_IDLE)) {
+	/* disable irqs to avoid ending up back here with the underrun error  */
+	s = spltty();
 
-#        if 0  // XXX
-    /* XXX Receive Buffer Overrun */
-    if (reg->sta & PIC32_USTA_OERR)
-        reg->staclr = PIC32_USTA_OERR;
-#        endif // XXX
-
-        /* RXNE flag was cleared by reading DR register */
-
-        /* Transmit */
-        if (LL_USART_IsActiveFlag_TXE(uip->inst)) {
-                led_control(LED_TTY, 0);
-
-                /* Disable transmit interrupt. */
-                LL_USART_DisableIT_TXE(uip->inst);
-
-                if (tp->t_state & TS_BUSY) {
-                        tp->t_state &= ~TS_BUSY;
-                        ttstart(tp);
+	avail = uip->inst->RCFIFO;
+	/* next two comment blocks verbatim from original source */
+	if (avail == 0) {
+	    /* The only way to clear the IDLE interrupt flag is
+	     * to read the data register.  But reading with no
+	     * data causes a FIFO underrun, which causes the
+	     * FIFO to return corrupted data.  If anyone from
+	     * Freescale reads this, what a poor design!  There
+	     * write should be a write-1-to-clear for IDLE.
+	     */
+	    c = uip->inst->D;
+	    /* flushing the fifo recovers from the underrun,
+	     * but there's a possible race condition where a
+	     * new character could be received between reading
+	     * RCFIFO == 0 and flushing the FIFO.  To minimize
+	     * the chance, interrupts are disabled so a higher
+	     * priority interrupt (hopefully) doesn't delay.
+	     * TODO: change this to disabling the IDLE interrupt
+	     * which won't be simple, since we already manage
+	     * which transmit interrupts are enabled.
+	     */
+	    uip->inst->CFIFO = UART_CFIFO_RXFLUSH;
+	    splx(s);
+	} else {
+	    splx(s);
+	    head = uip->rx_buffer_head;
+	    tail = uip->rx_buffer_tail;
+	    do {
+		n = uip->inst->D;
+		newhead = head + 1;
+		if (newhead >= RX_BUFFER_SIZE) newhead = 0;
+		if (newhead != tail) {
+		    head = newhead;
+		    if (newhead < RX_BUFFER_SIZE) {
+			uip->rx_buffer[head] = n;
+                    } else {
+                        uip->rx_buffer[head - RX_BUFFER_SIZE] = n;
+                    }
                 }
+		/* let's consume the characters as they arrive? no idea how this works */
+		ttyinput(uartgetc(dev), tp);
+            } while (--avail > 0);
+            uip->rx_buffer_head = head;
         }
+    }
+    c = uip->inst->C2;
+    /* TDRE = transmit data below watermark */
+    if ((c & UART_C2_TIE) && (uip->inst->S1 & UART_S1_TDRE)) {
+	head = uip->tx_buffer_head;
+	tail = uip->tx_buffer_tail;
+	do {
+	    if (tail == head) break;
+	    if (++tail >= TX_BUFFER_SIZE) tail = 0;
+	    avail = uip->inst->S1;
+            if (tail < TX_BUFFER_SIZE) {
+                n = uip->tx_buffer[tail];
+            } else {
+                n = uip->tx_buffer[tail - TX_BUFFER_SIZE];
+            }
+            uip->inst->D = n;
+        } while (uip->inst->TCFIFO < 8);
+        uip->tx_buffer_tail = tail;
+	
+        if (uip->inst->S1 & UART_S1_TDRE) /* we are soon done */
+            uip->inst->C2 = C2_TX_COMPLETING;
+    }
+
+    /* yes, we are done. */
+    if ((c & UART_C2_TCIE) && (uip->inst->S1 & UART_S1_TC)) {
+        transmitting &= ~(1 << unit);
+        /* TODO: check reference */
+        uip->inst->C2 = C2_TX_INACTIVE;
+
+	/* clear busy state as there is nothing left to send. */
+	if (tp->t_state & TS_BUSY) {
+	    tp->t_state &= ~TS_BUSY;
+	    ttstart(tp);
+	}
+    }
 }
+
 
 /*
  * Start (restart) transmission on the given line.
  */
 void uartstart(struct tty *tp) {
-        register struct uart_inst *uip;
-        register int c, s;
+    register struct uart_inst *uip;
+    register int c, s;
 
-        if (!tp->t_addr)
-                return;
+    if (!tp->t_addr)
+	return;
 
-        uip = (struct uart_inst *) tp->t_addr;
+    uip = (struct uart_inst *) tp->t_addr;
 
-        /*
+    /*
      * Must hold interrupts in following code to prevent
      * state of the tp from changing.
      */
-        s   = spltty();
-        /*
+    s   = spltty();
+    /*
      * If it is currently active, or delaying, no need to do anything.
      */
-        if (tp->t_state & (TS_TIMEOUT | TS_BUSY | TS_TTSTOP)) {
-        out:
-                led_control(LED_TTY, 0);
-                splx(s);
-                return;
-        }
+    if (tp->t_state & (TS_TIMEOUT | TS_BUSY | TS_TTSTOP)) {
+    out:
+	led_control(LED_TTY, 0);
+	splx(s);
+	return;
+    }
 
-        /*
+    /*
      * Wake up any sleepers.
      */
-        ttyowake(tp);
+    ttyowake(tp);
 
-        /*
+    /*
      * Now restart transmission unless the output queue is empty.
      */
-        if (tp->t_outq.c_cc == 0)
-                goto out;
+    if (tp->t_outq.c_cc == 0)
+	goto out;
 
-        if (LL_USART_IsActiveFlag_TXE(uip->inst)) {
-                c = getc(&tp->t_outq);
-                LL_USART_TransmitData8(uip->inst, c & 0xff);
-                tp->t_state |= TS_BUSY;
-        }
+    /* is the transmit data register empty? if it is, let's go */
+    if (uip->inst->S1 & UART_S1_TDRE) {
+	c = getc(&tp->t_outq);
+	uartputc(tp->t_dev, c);
+	tp->t_state |= TS_BUSY;
+    }
 
-        /* Enable transmit interrupt. */
-        LL_USART_EnableIT_TXE(uip->inst);
-
-        led_control(LED_TTY, 1);
-        splx(s);
+    led_control(LED_TTY, 1);
+    splx(s);
 }
 
 void uartputc(dev_t dev, char c) {
-        int unit                             = minor(dev);
-        struct tty *tp                       = &uartttys[unit];
-        register const struct uart_inst *uip = &uart[unit];
-        register int s, timo;
+    int unit                       = minor(dev);
+    struct tty *tp                 = &uartttys[unit];
+    register struct uart_inst *uip = &uart[unit];
+    u_char n, head;
+    register int s, timo;
 
-        s = spltty();
-again:
-        /*
-     * Try waiting for the console tty to come ready,
-     * otherwise give up after a reasonable time.
-     */
-        timo = 30000;
-        while (!LL_USART_IsActiveFlag_TXE(uip->inst))
-                if (--timo == 0)
-                        break;
+    s = spltty();
+    led_control(LED_TTY, 1);
 
-        if (tp->t_state & TS_BUSY) {
-                uartintr(dev);
-                goto again;
-        }
-        led_control(LED_TTY, 1);
-        LL_USART_ClearFlag_TC(uip->inst);
-        LL_USART_TransmitData8(uip->inst, c);
+    head = uip->tx_buffer_head;
 
-        timo = 30000;
-        while (!LL_USART_IsActiveFlag_TC(uip->inst))
-                if (--timo == 0)
-                        break;
+    if (++head >= TX_BUFFER_SIZE) head = 0;
+    while (uip->tx_buffer_tail == head) {
+	if (uip->inst->S1 & UART_S1_TDRE) {
+	    u_char tail = uip->tx_buffer_tail;
+	    if (++tail >= TX_BUFFER_SIZE) tail = 0;
+	    if (tail < TX_BUFFER_SIZE) {
+		n = uip->tx_buffer[tail];
+	    } else {
+		n = uip->tx_buffer[tail-TX_BUFFER_SIZE];
+	    }
+	    uip->inst->D = n;
+	    uip->tx_buffer_tail = tail;
+	}
+    }
+    if (head < TX_BUFFER_SIZE) {
+	uip->tx_buffer[head] = c;
+    } else {
+	uip->tx_buffer[head - TX_BUFFER_SIZE] = c;
+    }
+    transmitting &= (1 << unit);
+    uip->tx_buffer_head = head;
+    uip->inst->C2 = C2_TX_ACTIVE;
 
-        led_control(LED_TTY, 0);
-        splx(s);
+    led_control(LED_TTY, 0);
+    splx(s);
 }
 
+
 char uartgetc(dev_t dev) {
-        int unit                             = minor(dev);
-        register const struct uart_inst *uip = &uart[unit];
-        int s, c;
+    int unit                       = minor(dev);
+    register struct uart_inst *uip = &uart[unit];
+    int s, c;
+    u_char head, tail;
 
-        s = spltty();
-        for (;;) {
-                /* Wait for key pressed. */
-                if (LL_USART_IsActiveFlag_RXNE(uip->inst)) {
-                        c = LL_USART_ReceiveData8(uip->inst);
-                        break;
-                }
-        }
+    s = spltty();
+    
+    head = uip->rx_buffer_head;
+    tail = uip->rx_buffer_tail;
 
-        /* RXNE flag was cleared by reading DR register */
+    if (head == tail) {
+	while (1) {
+	    ; /* TODO: do whatever is supposed to be done */
+	}
+    }
+    if (++tail >= RX_BUFFER_SIZE) tail = 0;
+    if (tail < RX_BUFFER_SIZE) {
+	c = uip->rx_buffer[tail];
+    } else {
+	c = uip->rx_buffer[tail - RX_BUFFER_SIZE];
+    }
+    uip->rx_buffer_tail = tail;
 
-        splx(s);
-        return (unsigned char) c;
+    splx(s);
+    return (unsigned char) c;
 }
 
 /*
  * Test to see if device is present.
  * Return true if found and initialized ok.
  */
-static int uartprobe(struct conf_device *config) {
-        int unit = config->dev_unit - 1;
-        int is_console =
-            (CONS_MAJOR == UART_MAJOR && CONS_MINOR == unit);
+static int
+uartprobe(struct conf_device *config)
+{
+    int unit = config->dev_unit - 1;
+    int is_console = (CONS_MAJOR == UART_MAJOR &&
+		      CONS_MINOR == unit);
 
-        if (unit < 0 || unit >= NUART)
-                return 0;
+    if (unit < 0 || unit >= NUART)
+	return 0;
 
-        printf("uart%d: pins tx=P%c%d/rx=P%c%d, af=%d", unit + 1,
-               uart[unit].tx.port_name, ffs(uart[unit].tx.pin) - 1,
-               uart[unit].rx.port_name, ffs(uart[unit].rx.pin) - 1,
-               uart[unit].af);
+    switch (unit) {
+    case 0:
+	SIM_SCGC4 |= SIM_SCGC4_UART0;
+	break;
+    default:
+	printf("uart: unit %d not supported\n");
+	return 0;
+    }
 
-        if (is_console)
-                printf(", console");
-        printf("\n");
+    transmitting &= ~(1 << unit);
+    
+    printf("uart%d: rx pin %d, tx pin %d\n",
+	   unit+1,
+	   uart[unit].rx_pin_num, uart[unit].tx_pin_num);
 
-        /* Initialize the device. */
-        uartttys[unit].t_addr = (caddr_t) &uart[unit];
-        if (!is_console)
-                uartinit(unit);
+    if (is_console)
+	printf(", console");
+    printf("\n");
 
-        return 1;
+    /* Initialize the device. */
+    uartttys[unit].t_addr = (caddr_t) &uart[unit];
+    if (! is_console)
+	uartinit(unit);
+
+    return 1;
 }
 
 struct driver uartdriver = {
     "uart",
     uartprobe,
 };
-#endif

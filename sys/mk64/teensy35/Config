@@ -23,11 +23,10 @@ options         "CPU_KHZ=120000"            # Oscillator frequency of CPU core
 options         "BUS_KHZ=60000"             # Frequency of peripheral bus
 options		"F_CPU=120000000UL"
 options		"F_BUS=60000000UL"
+# options		"USB_DISABLED"
 options		"USB_SERIAL"
-options		"USB_SERIAL_UART"
 options		"NMOUNT=4"
 # options         "HALTREBOOT"                # If halted, press key to reboot
-# options         "BSP"                       # Board support package
 
 # Root filesystem at /dev/sd0a, swap at /dev/sd0b
 config          unix    root on sd0a
@@ -38,13 +37,13 @@ config          unix    root on sd0a
 # Serial UART ports
 
 device           usbuart1                    # Teensy virtual USB UART
-#device          uart1                       # USART1
+device           uart1                       # rx pin 0, tx pin 1
 #device          uart2                       # USART2 as console
 #device          uart3                       # USART3
 #device          uart4                       # UART4
 #device          uart5                       # UART5
 #device          uart6                       # USART6
-#options         "UART_BAUD=115200"          # default speed
+options         "UART_BAUD=115200"          # default speed
 
 options         "CONS_MAJOR=UARTUSB_MAJOR"   # USB UART device
 options         "CONS_MINOR=0"               # posing as uart0
