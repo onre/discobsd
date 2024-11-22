@@ -35,114 +35,8 @@
 #include <machine/intr.h>
 #include <machine/systick.h>
 
+/* in other words, this only works on Teensy 3.5/3.6 and 4.x. */
 #if defined(__MK64FX512__) || defined(__MK66FX1M0__) || defined(__IMXRT1062__)
-
-
-/* limit of K66 due to errata KINETIS_K_0N65N. */
-const uint32_t MAX_BLKCNT = 0XFFFF;
-
-const uint32_t FIFO_WML = 16;
-const uint32_t CMD8_RETRIES = 3;
-const uint32_t BUSY_TIMEOUT_MS = 1000;
-
-const uint32_t SDHC_IRQSTATEN_MASK =
-               SDHC_IRQSTATEN_DMAESEN | SDHC_IRQSTATEN_AC12ESEN |
-               SDHC_IRQSTATEN_DEBESEN | SDHC_IRQSTATEN_DCESEN |
-               SDHC_IRQSTATEN_DTOESEN | SDHC_IRQSTATEN_CIESEN |
-               SDHC_IRQSTATEN_CEBESEN | SDHC_IRQSTATEN_CCESEN |
-               SDHC_IRQSTATEN_CTOESEN | SDHC_IRQSTATEN_DINTSEN |
-               SDHC_IRQSTATEN_TCSEN | SDHC_IRQSTATEN_CCSEN;
-const uint32_t SDHC_IRQSTAT_CMD_ERROR =
-               SDHC_IRQSTAT_CIE | SDHC_IRQSTAT_CEBE |
-               SDHC_IRQSTAT_CCE | SDHC_IRQSTAT_CTOE;
-const uint32_t SDHC_IRQSTAT_DATA_ERROR =
-               SDHC_IRQSTAT_AC12E | SDHC_IRQSTAT_DEBE |
-               SDHC_IRQSTAT_DCE | SDHC_IRQSTAT_DTOE;
-const uint32_t SDHC_IRQSTAT_ERROR =
-               SDHC_IRQSTAT_DMAE | SDHC_IRQSTAT_CMD_ERROR |
-               SDHC_IRQSTAT_DATA_ERROR;
-const uint32_t SDHC_IRQSIGEN_MASK =
-               SDHC_IRQSIGEN_DMAEIEN | SDHC_IRQSIGEN_AC12EIEN |
-               SDHC_IRQSIGEN_DEBEIEN | SDHC_IRQSIGEN_DCEIEN |
-               SDHC_IRQSIGEN_DTOEIEN | SDHC_IRQSIGEN_CIEIEN |
-               SDHC_IRQSIGEN_CEBEIEN | SDHC_IRQSIGEN_CCEIEN |
-               SDHC_IRQSIGEN_CTOEIEN | SDHC_IRQSIGEN_TCIEN;
-const uint32_t CMD_RESP_NONE = SDHC_XFERTYP_RSPTYP(0);
-const uint32_t CMD_RESP_R1 = SDHC_XFERTYP_CICEN | SDHC_XFERTYP_CCCEN |
-                             SDHC_XFERTYP_RSPTYP(2);
-const uint32_t CMD_RESP_R1b = SDHC_XFERTYP_CICEN | SDHC_XFERTYP_CCCEN |
-                              SDHC_XFERTYP_RSPTYP(3);
-const uint32_t CMD_RESP_R2 = SDHC_XFERTYP_CCCEN | SDHC_XFERTYP_RSPTYP(1);
-const uint32_t CMD_RESP_R3 = SDHC_XFERTYP_RSPTYP(2);
-const uint32_t CMD_RESP_R6 = CMD_RESP_R1;
-const uint32_t CMD_RESP_R7 = CMD_RESP_R1;
-
-#if defined(__MK64FX512__) || defined(__MK66FX1M0__)
-const uint32_t DATA_READ = SDHC_XFERTYP_DTDSEL | SDHC_XFERTYP_DPSEL;
-const uint32_t DATA_READ_DMA = DATA_READ | SDHC_XFERTYP_DMAEN;
-const uint32_t DATA_READ_MULTI_DMA = DATA_READ_DMA | SDHC_XFERTYP_MSBSEL |
-                                     SDHC_XFERTYP_AC12EN | SDHC_XFERTYP_BCEN;
-const uint32_t DATA_READ_MULTI_PGM = DATA_READ | SDHC_XFERTYP_MSBSEL |
-                                     SDHC_XFERTYP_BCEN;
-const uint32_t DATA_WRITE_DMA = SDHC_XFERTYP_DPSEL | SDHC_XFERTYP_DMAEN;
-const uint32_t DATA_WRITE_MULTI_DMA = DATA_WRITE_DMA | SDHC_XFERTYP_MSBSEL |
-                                      SDHC_XFERTYP_AC12EN | SDHC_XFERTYP_BCEN;
-const uint32_t DATA_WRITE_MULTI_PGM = SDHC_XFERTYP_DPSEL | SDHC_XFERTYP_MSBSEL |
-                                      SDHC_XFERTYP_BCEN;
-
-#elif defined(__IMXRT1062__)
-// Use low bits for SDHC_MIX_CTRL since bits 15-0 of SDHC_XFERTYP are reserved.
-const uint32_t SDHC_MIX_CTRL_MASK = SDHC_MIX_CTRL_DMAEN | SDHC_MIX_CTRL_BCEN |
-                                    SDHC_MIX_CTRL_AC12EN |
-                                    SDHC_MIX_CTRL_DDR_EN |
-                                    SDHC_MIX_CTRL_DTDSEL |
-                                    SDHC_MIX_CTRL_MSBSEL |
-                                    SDHC_MIX_CTRL_NIBBLE_POS |
-                                    SDHC_MIX_CTRL_AC23EN;
-const uint32_t DATA_READ = SDHC_MIX_CTRL_DTDSEL | SDHC_XFERTYP_DPSEL;
-const uint32_t DATA_READ_DMA = DATA_READ | SDHC_MIX_CTRL_DMAEN;
-const uint32_t DATA_READ_MULTI_DMA = DATA_READ_DMA | SDHC_MIX_CTRL_MSBSEL |
-                                     SDHC_MIX_CTRL_AC12EN | SDHC_MIX_CTRL_BCEN;
-const uint32_t DATA_READ_MULTI_PGM = DATA_READ | SDHC_MIX_CTRL_MSBSEL;
-const uint32_t DATA_WRITE_DMA = SDHC_XFERTYP_DPSEL | SDHC_MIX_CTRL_DMAEN;
-const uint32_t DATA_WRITE_MULTI_DMA = DATA_WRITE_DMA | SDHC_MIX_CTRL_MSBSEL |
-                                      SDHC_MIX_CTRL_AC12EN | SDHC_MIX_CTRL_BCEN;
-const uint32_t DATA_WRITE_MULTI_PGM = SDHC_XFERTYP_DPSEL | SDHC_MIX_CTRL_MSBSEL;
-
-#endif  // defined(__MK64FX512__) || defined(__MK66FX1M0__)
-
-const uint32_t ACMD6_XFERTYP = (SDHC_XFERTYP_CMDINX(ACMD6) | CMD_RESP_R1);
-const uint32_t ACMD41_XFERTYP = (SDHC_XFERTYP_CMDINX(ACMD41) | CMD_RESP_R3);
-const uint32_t CMD0_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD0) | CMD_RESP_NONE);
-const uint32_t CMD2_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD2) | CMD_RESP_R2);
-const uint32_t CMD3_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD3) | CMD_RESP_R6);
-const uint32_t CMD6_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD6) | CMD_RESP_R1 |
-                              DATA_READ_DMA);
-const uint32_t CMD7_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD7) | CMD_RESP_R1b);
-const uint32_t CMD8_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD8) | CMD_RESP_R7);
-const uint32_t CMD9_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD9) | CMD_RESP_R2);
-const uint32_t CMD10_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD10) | CMD_RESP_R2);
-const uint32_t CMD11_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD11) | CMD_RESP_R1);
-const uint32_t CMD12_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD12) | CMD_RESP_R1b |
-                               SDHC_XFERTYP_CMDTYP(3));
-const uint32_t CMD13_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD13) | CMD_RESP_R1);
-const uint32_t CMD17_DMA_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD17) | CMD_RESP_R1 |
-                                   DATA_READ_DMA);
-const uint32_t CMD18_DMA_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD18) | CMD_RESP_R1 |
-                                   DATA_READ_MULTI_DMA);
-const uint32_t CMD18_PGM_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD18) | CMD_RESP_R1 |
-                                   DATA_READ_MULTI_PGM);
-const uint32_t CMD24_DMA_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD24) | CMD_RESP_R1 |
-                                   DATA_WRITE_DMA);
-const uint32_t CMD25_DMA_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD25) | CMD_RESP_R1 |
-                                   DATA_WRITE_MULTI_DMA);
-const uint32_t CMD25_PGM_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD25) | CMD_RESP_R1 |
-                                   DATA_WRITE_MULTI_PGM);
-const uint32_t CMD32_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD32) | CMD_RESP_R1);
-const uint32_t CMD33_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD33) | CMD_RESP_R1);
-const uint32_t CMD38_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD38) | CMD_RESP_R1b);
-const uint32_t CMD55_XFERTYP = (SDHC_XFERTYP_CMDINX(CMD55) | CMD_RESP_R1);
-
 
 static int cardCommand(uint32_t xfertyp, uint32_t arg);
 static void enableGPIO(int enable);
@@ -1093,4 +987,5 @@ int mk6x_sdio_writeStart(uint32_t sector) {
 int mk6x_sdio_writeStop() {
   return transferStop();
 }
-#endif  // defined(__MK64FX512__)  defined(__MK66FX1M0__) defined(__IMXRT1062__)
+
+#endif
