@@ -30,10 +30,13 @@
 
 #ifdef KERNEL
 
+#include <sys/types.h>
+#include <sys/systm.h>
+
+#include <machine/machparam.h>
 #include <machine/teensy_usb_dev.h>
 #include <machine/teensy_usb_desc.h>
 #include <machine/teensy_usb_serial.h>
-#include <string.h> // for memcpy()
 
 // defined by usb_dev.h -> usb_desc.h
 #if defined(CDC_STATUS_INTERFACE) && defined(CDC_DATA_INTERFACE)
@@ -115,7 +118,8 @@ int usb_serial_read(void *buffer, uint32_t size)
 		}
 		qty = rx_packet->len - rx_packet->index;
 		if (qty > size) qty = size;
-		memcpy(p, rx_packet->buf + rx_packet->index, qty);
+		bcopy(rx_packet->buf + rx_packet->index, p, qty);
+		/* memcpy(p, rx_packet->buf + rx_packet->index, qty); */
 		p += qty;
 		count += qty;
 		size -= qty;

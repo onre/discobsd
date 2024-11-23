@@ -14,41 +14,44 @@
 #include <sys/systm.h>
 #include <sys/kconfig.h>
 
-#include <machine/usb_uart.h>
+#include <machine/uartusb.h>
 #include <machine/teensy_usb_serial.h>
 
 struct tty usbuartttys[1];
 
-static int usbuartisren;
-
 void cnstart(struct tty *tp);
 
-/**
- *
- * the only instance has already been initialized by the startup code,
- * so the routines are devoid of action.
- *
- */
+struct uartusb_inst {
+    volatile u_char rx_buffer[RX_BUFFER_SIZE];
+    volatile u_char tx_buffer[TX_BUFFER_SIZE];
+    volatile u_char rx_buffer_head;
+    volatile u_char rx_buffer_tail;
+    volatile u_char tx_buffer_head;
+    volatile u_char tx_buffer_tail;
+};
 
-void usbuartinit(int unit) {
+static struct uartusb_inst uartusb[1] = {{{0}, {0}, 0, 0, 0, 0}};
+
+void uartusbinit(int unit) {
+    register struct uartusb_inst *inst; 
+    
     if (unit != 0)
         return;
 
-    usbuartttys[0].t_addr =
-        (caddr_t) 2588; /* we need something so that the check does not fail */
-
-    usbuartisren = 1;
+    inst = &uartusb[unit];
 }
 
 int usbuartopen(dev_t dev, int flag, int mode) {
+    register struct uartusb_inst *uip; 
     register struct tty *tp;
     register int unit = minor(dev);
 
     if (unit != 0)
         return (ENXIO);
 
-    tp          = &usbuartttys[0];
+    tp          = &usbuartttys[unit];
 
+    uip         = (struct uartusb_inst *) tp->t_addr;
     tp->t_oproc = usbuartstart;
     if ((tp->t_state & TS_ISOPEN) == 0) {
         if (tp->t_ispeed ==
@@ -70,10 +73,8 @@ int usbuartopen(dev_t dev, int flag, int mode) {
 /*ARGSUSED*/
 int usbuartclose(dev_t dev, int flag, int mode) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[0];
+    register struct tty *tp = &usbuartttys[unit];
 
-    usb_serial_flush_output();
-    
     if (!tp->t_addr)
         return ENODEV;
 
@@ -85,7 +86,7 @@ int usbuartclose(dev_t dev, int flag, int mode) {
 /*ARGSUSED*/
 int usbuartread(dev_t dev, struct uio *uio, int flag) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[0];
+    register struct tty *tp = &usbuartttys[unit];
 
     if (!tp->t_addr)
         return ENODEV;
@@ -96,7 +97,7 @@ int usbuartread(dev_t dev, struct uio *uio, int flag) {
 /*ARGSUSED*/
 int usbuartwrite(dev_t dev, struct uio *uio, int flag) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[0];
+    register struct tty *tp = &usbuartttys[unit];
 
     if (!tp->t_addr)
         return ENODEV;
@@ -106,7 +107,7 @@ int usbuartwrite(dev_t dev, struct uio *uio, int flag) {
 
 int usbuartselect(dev_t dev, int rw) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[0];
+    register struct tty *tp = &usbuartttys[unit];
 
     if (!tp->t_addr)
         return ENODEV;
@@ -117,7 +118,7 @@ int usbuartselect(dev_t dev, int rw) {
 /*ARGSUSED*/
 int usbuartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[0];
+    register struct tty *tp = &usbuartttys[unit];
     register int error;
 
     if (!tp->t_addr)
@@ -130,41 +131,47 @@ int usbuartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
 }
 
 void usbuartintr(dev_t dev) {
-    register int c;
+    register int c, s;
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[0];
+    register struct tty *tp;
+    register struct uartusb_inst *uip;
+    u_char head, tail, n, newhead, avail;
+
+    if (unit != 0)
+	return;
+
+    tp          = &usbuartttys[unit];
 
     if (!tp->t_addr)
         return;
 
-    /* Receive */
-    while (usb_serial_available()) {
-        c = usb_serial_getchar();
-        ttyinput(c, tp);
+    /* one day, a beautiful buffered implementation will arrive here.
+     * that day is not today.
+     */
+
+    uip         = (struct uartusb_inst *) tp->t_addr;
+
+    s = spltty();
+
+    avail = usb_serial_available();
+
+    if (avail) {
+        do {
+            ttyinput(usb_serial_getchar(), tp);
+        } while (--avail > 0);
     }
 
-#if 0
-    if (LL_USART_IsActiveFlag_TXE(uip->inst)) {
-        led_control(LED_TTY, 0);
-
-        /* Disable transmit interrupt. */
-        LL_USART_DisableIT_TXE(uip->inst);
-#endif
-
+    splx(s);
+    
     if (tp->t_state & TS_BUSY) {
         tp->t_state &= ~TS_BUSY;
         ttstart(tp);
     }
-#if 0 
-    }
-#endif
 }
 
 /* usb_isr() from teensy_usb_dev.c calls this */
 void usb_uart_isr(void) {
-  if (usbuartisren) {
-        usbuartintr(makedev(UARTUSB_MAJOR, 0));
-    }
+    usbuartintr(makedev(UARTUSB_MAJOR, 0));
 }
 
 /*
@@ -202,9 +209,12 @@ void usbuartstart(struct tty *tp) {
     if (tp->t_outq.c_cc == 0)
         goto out;
 
-    c = getc(&tp->t_outq);
-    usb_serial_putchar(c);
-    tp->t_state |= TS_BUSY;
+    do {
+        c = getc(&tp->t_outq);
+        usb_serial_putchar(c);
+    } while (tp->t_outq.c_cc);
+
+    tp->t_state &= ~TS_BUSY;
 
     led_control(LED_TTY, 1);
     splx(s);
@@ -212,7 +222,7 @@ void usbuartstart(struct tty *tp) {
 
 void usbuartputc(dev_t dev, char c) {
     int unit       = minor(dev);
-    struct tty *tp = &usbuartttys[0];
+    struct tty *tp = &usbuartttys[unit];
     register int s, timo;
 
     s = spltty();
@@ -269,28 +279,28 @@ char usbuartgetc(dev_t dev) {
  * Test to see if device is present.
  * Return true if found and initialized ok.
  */
-static int usbuartprobe(struct conf_device *config) {
+static int uartusbprobe(struct conf_device *config) {
     int unit       = config->dev_unit - 1;
     int is_console = (CONS_MAJOR == UARTUSB_MAJOR && CONS_MINOR == unit);
 
     if (unit != 0)
         return 0;
 
-    printf("usbuart%d: USB", unit);
+    printf("uartusb%d: USB", unit);
 
     if (is_console)
         printf(", console");
     printf("\n");
 
     /* Initialize the device. */
-
+    usbuartttys[unit].t_addr = (caddr_t) &uartusb[unit];
     if (!is_console)
-        usbuartinit(unit);
+        uartusbinit(unit);
 
     return 1;
 }
 
-struct driver usbuartdriver = {
-    "usbuart",
-    usbuartprobe,
+struct driver uartusbdriver = {
+    "uartusb",
+    uartusbprobe,
 };

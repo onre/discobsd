@@ -32,7 +32,74 @@
 
 #    include <machine/mk64fx512.h>
 
-unsigned long rtc_get(void) { return RTC_TSR; }
+void mpuinit(void) {
+    /**
+     *
+     * TODO: take full advantage of the MPU.
+     *
+     * MPU_CESR value as freshly reset is 0x00815101.
+     *
+     * crossbar switch master assignments:
+     *
+     *   0  core code bus       3  enet
+     *   1  core system bus     4  usb fs/ls otg
+     *   2  dma/ezport          5  sdhc
+     *
+     * slave port assignments from Kinetis K64 sub-family reference manual:
+     *
+     *   crossbar slave port 0  ->  mpu slave port 0  ->  flash controller 
+     *   crossbar slave port 1  ->  mpu slave port 1  ->  SRAM backdoor
+     *       code bus (SRAM_L)  ->  mpu slave port 2  ->  SRAM_L backdoor
+     *     system bus (SRAM_U)  ->  mpu slave port 3  ->  SRAM_U backdoor
+     *   crossbar slave port 4  ->  mpu slave port 4  ->  flexbus
+     *
+     * logical bus master assigments (important for setting RGDAACn and friends):
+     *
+     *   0  core         4  usb
+     *   1  debugger     5  sdhc
+     *   2  dma/ezport   6  (none)
+     *   3  enet         7  (none)
+     *
+     * interestingly enough, only debugger may change any register. core is not
+     * permitted to touch RGD0 other than set permissions via RGDAAC0 and even
+     * then changing M1SM or M1UM is not allowed as blocking the debugger is out
+     * of question.
+     *
+     * system memory map:
+     *
+     *        range                  what                    access
+     *  0000 0000-07ff ffff   flash                        read only, all masters
+     *  0800 0000-0fff ffff   flexbus alias for 88*        core only
+     *  1000 0000-13ff ffff   flexnvm (emulated eeprom)    all masters
+     *  1400 0000-17ff ffff   flexram (not very useful)    all masters
+     *  1800 0000-1bff ffff   flexbus alias for 98*        core only
+     *  1fff 0000-1fff ffff   SRAM_L: lower SRAM           all masters
+     *  2000 0000-2002 ffff   SRAM_U: upper SRAM           all masters
+     *                        _bitband region_, wtf
+     *  2010 0000-21ff ffff   reserved                     -
+     *  2200 0000-23ff ffff   TCMU SRAM bitband alias      core only
+     *  2400 0000-2fff ffff   reserved                     -
+     *  4000                  AIPS0 bitband (peripherals)
+     *  4008                  AIPS1 bitband (more peripherals)
+     *  400f                  GPIO bitband
+     *     (...higher up there is more stuff...)
+     *
+     * also, misaligned access over the lower/upper boundary is not allowed.
+     *
+     */
+
+#if 0
+    t = MPU_RGDAAC0;
+    t |= 0x0F7DF7DF;
+    MPU_RGDAAC0 = t;
+#endif
+}
+
+
+unsigned long
+    rtc_get(void) {
+    return RTC_TSR;
+}
 
 void rtc_set(unsigned long t) {
     RTC_SR  = 0;

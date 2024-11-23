@@ -90,6 +90,7 @@ static __inline void wfi(void) {
 int nvic_execution_priority(void);
 unsigned long rtc_get(void);
 void rtc_set(unsigned long);
+void mpuinit(void);
 
 #define __NVIC_PRIO_BITS 4
 

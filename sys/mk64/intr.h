@@ -70,19 +70,21 @@
  */
 
 #define SPL_LEAST     240
-#define SPL_SOFTCLOCK 192
-#define SPL_NET       128
-#define SPL_BIO       64
-#define SPL_TTY       32
-#define SPL_CLOCK     16
+#define SPL_SOFTCLOCK 224
+#define SPL_NET       192
+#define SPL_BIO       160
+#define SPL_TTY       128
+#define SPL_CLOCK     32
 #define SPL_HIGH      0
 
 static inline void arm_enable_interrupts() {
     __enable_irq();
+    isb();
 }
 
 static inline void arm_disable_interrupts() {
     __disable_irq();
+    isb();
 }
 
 static inline void arm_disable_irq(int irq) {
@@ -105,11 +107,13 @@ static inline int splraise(int new) {
 
     old = get_basepri();
     set_basepri_max(new);
+    isb();
     return old;
 }
 
 static inline void splx(int s) {
     set_basepri(s);
+    isb();
 }
 
 static inline int spl0(void) {
@@ -117,6 +121,7 @@ static inline int spl0(void) {
 
     old = get_basepri();
     set_basepri(SPL_LEAST);
+    isb();
 
     return old;
 }

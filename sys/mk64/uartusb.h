@@ -3,7 +3,13 @@
 
 #ifdef KERNEL
 
-void            usbuartinit(int unit);
+#include <sys/types.h>
+#include <sys/tty.h>
+
+#define RX_BUFFER_SIZE 64
+#define TX_BUFFER_SIZE 64
+
+void            uartusbinit(int unit);
 int             usbuartopen(dev_t dev, int flag, int mode);
 int             usbuartclose(dev_t dev, int flag, int mode);
 int             usbuartread(dev_t dev, struct uio *uio, int flag);

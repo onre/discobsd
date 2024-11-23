@@ -17,6 +17,8 @@
 #ifndef _MACHINE_FRAME_H_
 #define _MACHINE_FRAME_H_
 
+#include <sys/types.h>
+
 #define	INSN_SZ		2	/* Thumb are 2 bytes; some are 4 bytes. */
 
 #define	PSR_C		(1UL << 29U)	/* Carry bit. */

@@ -6,23 +6,25 @@
  * specifies the terms and conditions for redistribution.
  */
 
+#include <sys/types.h>
+
 #if defined(USB_DISABLED) && defined(USB_SERIAL)
 #error can not define USB_DISABLED and USB_SERIAL simultaneously
 #endif
 
 #ifndef ENDIAN
 
-#    define MACHINE "mk64"
-#    define MACHINE_ARCH "arm"
+#define MACHINE      "mk64"
+#define MACHINE_ARCH "arm"
 
 /*
  * Definitions for byte order,
  * according to byte significance from low address to high.
  */
-#    define LITTLE 1234 /* least-significant byte first (vax) */
-#    define BIG 4321    /* most-significant byte first */
-#    define PDP 3412    /* LSB first in word, MSW first in long (pdp) */
-#    define ENDIAN LITTLE /* byte order on stm32 */
+#define LITTLE       1234 /* least-significant byte first (vax) */
+#define BIG          4321 /* most-significant byte first */
+#define PDP          3412 /* LSB first in word, MSW first in long (pdp) */
+#define ENDIAN       LITTLE /* byte order on stm32 */
 
 /*
  * The time for a process to be blocked before being very swappable.
@@ -33,61 +35,60 @@
  * It is related to human patience and other factors which don't really
  * change over time.
  */
-#    define MAXSLP 20
+#define MAXSLP       20
 
 /*
  * Clock ticks per second. The HZ value must be an integer factor of 1000.
  * Cortex-M SysTick operates with a 1ms time base, hence 1000 for HZ.
  */
-#    ifndef HZ
-#        define HZ 1000
-#    endif
+#ifndef HZ
+#define HZ 1000
+#endif
 
 /*
  * System parameter formulae.
  */
-#    ifndef NBUF
-#        define NBUF 10 /* number of i/o buffers */
-#    endif
-#    ifndef MAXUSERS
-#        define MAXUSERS 1 /* number of user logins */
-#    endif
-#    ifndef NPROC
-#        define NPROC 25 /* number of processes */
-#    endif
-#    ifndef NINODE
-#        define NINODE 24
-#    endif
-#    ifndef NFILE
-#        define NFILE 24
-#    endif
-#    define NNAMECACHE (NINODE * 11 / 10)
-#    define NCALL (16 + 2 * MAXUSERS)
-#    define NCLIST 32 /* number or CBSIZE blocks */
-#    ifndef SMAPSIZ
-#        define SMAPSIZ NPROC /* size of swap allocation map */
-#    endif
+#ifndef NBUF
+#define NBUF 10 /* number of i/o buffers */
+#endif
+#ifndef MAXUSERS
+#define MAXUSERS 1 /* number of user logins */
+#endif
+#ifndef NPROC
+#define NPROC 25 /* number of processes */
+#endif
+#ifndef NINODE
+#define NINODE 24
+#endif
+#ifndef NFILE
+#define NFILE 24
+#endif
+#define NNAMECACHE (NINODE * 11 / 10)
+#define NCALL      (16 + 2 * MAXUSERS)
+#define NCLIST     32 /* number or CBSIZE blocks */
+#ifndef SMAPSIZ
+#define SMAPSIZ NPROC /* size of swap allocation map */
+#endif
 
 /*
  * Disk blocks.
  */
-#    define DEV_BSIZE 1024 /* the same as MAXBSIZE */
-#    define DEV_BSHIFT 10  /* log2(DEV_BSIZE) */
-#    define DEV_BMASK (DEV_BSIZE - 1)
+#define DEV_BSIZE  1024 /* the same as MAXBSIZE */
+#define DEV_BSHIFT 10   /* log2(DEV_BSIZE) */
+#define DEV_BMASK  (DEV_BSIZE - 1)
 
 /* Bytes to disk blocks */
-#    define btod(x) (((x) + DEV_BSIZE - 1) >> DEV_BSHIFT)
+#define btod(x)    (((x) + DEV_BSIZE - 1) >> DEV_BSHIFT)
 
-#    if 1 /* XXX Needed for ps, w, smlrc. To be removed. */
-#        define USER_DATA_START (0x20000000)
-#        define USER_DATA_SIZE                                         \
-            (192 * 1024) -                                             \
-                8 /* almost 192 kb (196600 bytes) of user RAM. */
-#        define USER_DATA_END (USER_DATA_START + USER_DATA_SIZE)
+#if 1 /* XXX Needed for ps, w, smlrc. To be removed. */
+#define USER_DATA_START (0x20000000)
+#define USER_DATA_SIZE                                                 \
+    (192 * 1024) - 8 /* almost 192 kb (196600 bytes) of user RAM. */
+#define USER_DATA_END (USER_DATA_START + USER_DATA_SIZE)
 
-#        define stacktop(siz) (USER_DATA_END)
-#        define stackbas(siz) (USER_DATA_END - (siz))
-#    endif /* XXX Needed for ps, w, smlrc. To be removed. */
+#define stacktop(siz) (USER_DATA_END)
+#define stackbas(siz) (USER_DATA_END - (siz))
+#endif /* XXX Needed for ps, w, smlrc. To be removed. */
 
 /*
  * User area: a user structure, followed by the kernel
@@ -100,35 +101,37 @@
  * applications having to be recompiled for networking versus non-networking
  * systems.
  */
-#    define USIZE 3072
-#    define SSIZE 2048 /* initial stack size (bytes) */
+#define USIZE  3072
+#define SSIZE  2048 /* initial stack size (bytes) */
 
-#define MAXMEM (192*1024-8)
+#define MAXMEM (192 * 1024 - 8)
 
 /*
  * Collect kernel statistics by default.
  */
-#    if !defined(UCB_METER) && !defined(NO_UCB_METER)
-#        define UCB_METER
-#    endif
+#if !defined(UCB_METER) && !defined(NO_UCB_METER)
+#define UCB_METER
+#endif
 
-#    ifdef KERNEL
-#        include <machine/intr.h>
+#ifdef KERNEL
+#include <machine/intr.h>
 
 /*
  * Macros to decode processor status word.
  */
-#        define USERMODE(psr)                                          \
-            ((psr & 0x1FFUL) == 0)                /* No exceptions. */
-#        define BASEPRI(psr) (get_basepri() == 0) /* No masking. */
+#define USERMODE(psr) ((psr & 0x1FFUL) == 0) /* No exceptions. */
+#define BASEPRI(psr)  (get_basepri() == 0)   /* No masking. */
 
-#        define noop() asm volatile("nop")
+#define noop()        asm volatile("nop")
 
 /**
  *  the handy debugging method
  */
 
-#define LED_AND_DEATH() GPIOC_PSOR = (1 << 5); while (1);
+#define LED_AND_DEATH()                                                \
+    GPIOC_PSOR = (1 << 5);                                             \
+    while (1)                                                          \
+        ;
 
 /*
  * Wait for something to happen.
@@ -146,13 +149,23 @@ void mdelay(unsigned msec);
 void clkstart(void);
 
 /*
+ * the memcpy function from memcpy-armv7m.S
+ */
+void *memcpy (void *dst, const void *src, size_t count);
+
+/*
+ * memset from memset.S
+ */
+void *memset(void *s, int c, size_t n);
+
+/*
  * Control LEDs, installed on the board.
  */
-#        define LED_TTY 0x08
-#        define LED_SWAP 0x04
-#        define LED_DISK 0x02
-#        define LED_KERNEL 0x01
-#        define LED_ALL (LED_TTY | LED_SWAP | LED_DISK | LED_KERNEL)
+#define LED_TTY    0x08
+#define LED_SWAP   0x04
+#define LED_DISK   0x02
+#define LED_KERNEL 0x01
+#define LED_ALL    (LED_TTY | LED_SWAP | LED_DISK | LED_KERNEL)
 
 void led_control(int mask, int on);
 
@@ -169,6 +182,6 @@ extern int sd_timo_wait_wdone;
 extern int sd_timo_wait_wstop;
 extern int sd_timo_wait_widle;
 
-#    endif /* KERNEL */
+#endif /* KERNEL */
 
 #endif /* ENDIAN */

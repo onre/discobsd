@@ -78,7 +78,7 @@ SECTIONS
 		*(.ARM.exidx* .gnu.linkonce.armexidx.*)
 		__exidx_end = .;
 	} > FLASH
-
+	_sidata	= .; /* start of initialization data */
 	_etext = .;
 	
 	.usbdescriptortable (NOLOAD) : {
@@ -98,11 +98,11 @@ SECTIONS
 	} > RAM
 
 	.data : AT (_etext) { 
-		. = ALIGN(4);
+		. = ALIGN(8);
 		_sdata = .; 
 		*(.fastrun*)
 		*(.data*)
-		. = ALIGN(4);
+		. = ALIGN(8);
 		_edata = .; 
 	} > RAM
 
@@ -111,12 +111,12 @@ SECTIONS
 	} > RAM
 
 	.bss : {
-		. = ALIGN(4);
+		. = ALIGN(8);
 		_sbss = .;
 		__bss_start__ = .;
 		*(.bss*)
 		*(COMMON)
-		. = ALIGN(4);
+		. = ALIGN(8);
 		_ebss = .;
 		__bss_end = .;
 		__bss_end__ = .;

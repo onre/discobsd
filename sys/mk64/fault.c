@@ -26,6 +26,7 @@
 
 #include <machine/fault.h>
 #include <machine/frame.h>
+#include <machine/intr.h>
 
 /*
  * Fault descriptions of Configurable Fault Status Register bits.
@@ -233,6 +234,16 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     printf(" r2:\t0x%08x\tpc:\t0x%08x\n", frame->ff_r2, frame->ff_pc);
     printf(" r3:\t0x%08x\tpsr:\t0x%08x\n", frame->ff_r3, frame->ff_psr);
 
+    if (MPU_CESR & 0xF8000000) {
+	printf("mpu error registers:\n");
+	printf(" sperr:\t0b" SPERR_F "\n", SPERR_B);
+	printf(" ear0:\t0x%08x\tedr0:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
+	printf(" ear1:\t0x%08x\tedr1:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
+	printf(" ear2:\t0x%08x\tedr2:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
+	printf(" ear3:\t0x%08x\tedr3:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
+	printf(" ear4:\t0x%08x\tedr4:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
+    }
+
     printf("fault status registers:\n");
     printf(" hfsr:\t0x%08x\tcfsr:\t0x%08x\n", hfsr, cfsr);
     printf("fault address registers:\n");
@@ -251,7 +262,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
 	if (SIM_SCGC4 & SIM_SCGC4_UART2) uart2_status_isr();
     }
     
-    arm_intr_enable();
+    arm_enable_interrupts();
 
     psignal(u.u_procp, psig);
     userret(frame->ff_pc, syst);

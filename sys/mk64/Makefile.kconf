@@ -14,7 +14,7 @@ DEFS=		${INCLUDES} ${PARAM} -DKERNEL ${DEPFLAGS} -D__MK64FX512__
 CWARNFLAGS=	-Wall
 
 CMACHCPU=	-mcpu=cortex-m4
-CMACHFLAGS=	-mthumb -ffreestanding -fno-builtin -fcommon 
+CMACHFLAGS=	-mthumb -ffreestanding -fno-builtin -fcommon -mno-unaligned-access
 CMACHFLAGS+=	-mfloat-abi=hard -mfpu=fpv4-sp-d16 -fsingle-precision-constant -nostdlib 
 CMACHFLAGS+=	-mabi=aapcs -mlittle-endian # -fdata-sections -ffunction-sections
 CMACHFLAGS+=	${CMACHCPU}
@@ -54,6 +54,8 @@ SYSTEM_LD_TAIL  = ${ARM_GCC_PREFIX}-readelf -S $@; \
 
 %LOAD
 
+sys/kconfig.h:	
+	${MAKE} reconfig
 clean:
 	rm -rf .deps unix *.elf *.o *.map *.dis *.bin machine sys
 

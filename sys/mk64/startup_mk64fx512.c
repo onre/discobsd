@@ -30,6 +30,7 @@
 
 #ifdef KERNEL
 
+#include <machine/machparam.h>
 #include <machine/mk64fx512.h>
 #include <machine/kinetis.h>
 #include <machine/teensy_usb_dev.h>
@@ -61,6 +62,7 @@ extern uint32_t _ebss;
 extern uint32_t _estack;
 extern uint32_t __user_data_start;
 extern uint32_t __user_data_end;
+extern uint32_t u;
 //extern void __init_array_start(void);
 //extern void __init_array_end(void);
 
@@ -535,16 +537,20 @@ void ResetHandler(void)
 
 	__asm__ volatile ("ldr     sp, =_estack");
 
-
 	WDOG_STCTRLH = WDOG_STCTRLH_ALLOWUPDATE;
+
+	memset(&u, 0, 0x400);
+
+	/* turn on double-word stack aligment at first possible moment */
+	SCB_CCR |= SCB_CCR_STKALIGN_MASK;
+	/* allow FPU memory access */
+	SCB_CPACR = 0x00F00000;
 
 	// enable clocks to always-used peripherals
 	SIM_SCGC3 = SIM_SCGC3_ADC1 | SIM_SCGC3_FTM2 | SIM_SCGC3_FTM3;
 	SIM_SCGC5 = 0x00043F82;		// clocks active to all GPIO
 	SIM_SCGC6 = SIM_SCGC6_RTC | SIM_SCGC6_FTM0 | SIM_SCGC6_FTM1 | SIM_SCGC6_ADC0 | SIM_SCGC6_FTFL;
 
-	/* allow FPU memory access */
-	SCB_CPACR = 0x00F00000;
 #if defined(KINETISK) && !defined(__MK66FX1M0__)
 	// If the RTC oscillator isn't enabled, get it started early.
 	// But don't do this early on Teensy 3.6 - RTC_CR depends on 3.3V+VBAT
@@ -561,11 +567,14 @@ void ResetHandler(void)
 
 	// since this is a write once register, make it visible to all F_CPU's
 	// so we can into other sleep modes in the future at any speed
+	/* these settings allow using all power modes the chip supports. */
 	SMC_PMPROT = SMC_PMPROT_AVLP | SMC_PMPROT_ALLS | SMC_PMPROT_AVLLS;
-
+	
+	/* make the led port writable and turn the led on. */
 	PORTC_PCR5 = PORT_PCR_MUX(1) | PORT_PCR_DSE | PORT_PCR_SRE;
 	GPIOC_PDDR |= (1<<5);
 	GPIOC_PSOR = (1<<5);
+
 	/* src and dest have been initialized at declaration as follows:
 	 *
 	 * src = &_etext, dest == &_sdata
@@ -607,7 +616,7 @@ void ResetHandler(void)
 	 */
 	dest = &__user_data_start;
 	while (dest < &__user_data_end) *dest++ = 0;
-
+	
 	/* copy interrupt vector table from flash to RAM, set medium priority and
 	 * switch over to the RAM copy.
 	 */
@@ -890,22 +899,23 @@ void ResetHandler(void)
 	mdelay(1000);
 
 	main();
-	asm("cpsid i");
-	asm("movs r0, #0");
-	asm("msr BASEPRI, r0");
-	asm("ldr r0, =__user_data_end");
-	asm("msr PSP, r0");
-	asm("isb");
-	asm("mrs r0, CONTROL"); /* ...thus ARM is guaranteed to start in supervisor mode?
+	__asm__ volatile("cpsid i");
+	__asm__ volatile("movs r0, #0");
+	__asm__ volatile("msr BASEPRI, r0");
+	__asm__ volatile("ldr r0, =__user_data_end");
+	__asm__ volatile("msr PSP, r0");
+	__asm__ volatile("isb");
+	__asm__ volatile("mrs r0, CONTROL"); /* ...thus ARM is guaranteed to start in supervisor mode?
 				 * I suppose that's the only sensible way.
 				 */
-	asm("orrs r0, r0, #0x1");
-	asm("orrs r0, r0, #0x2");
-	asm("cpsie i");
-	asm("msr CONTROL, r0");
-	asm("isb");
-	asm("ldr lr,=__user_data_start+1");
-	asm("bx lr");
+	__asm__ volatile("orrs r0, r0, #0x1");
+	__asm__ volatile("orrs r0, r0, #0x2");
+	__asm__ volatile("cpsie i");
+	__asm__ volatile("msr CONTROL, r0");
+	__asm__ volatile("isb");
+
+	__asm__ volatile("ldr lr,=__user_data_start+1");
+	__asm__ volatile("bx lr");
 	
 	while (1) ;
 }

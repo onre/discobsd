@@ -23,11 +23,12 @@
 #include <sys/tty.h>
 
 #include <machine/fault.h>
-#include <machine/usb_uart.h>
+#include <machine/uartusb.h>
+#include <machine/uart.h>
 #include <machine/systick.h>
+#include <machine/teensy.h>
 
 #if defined(TEENSY_LED_KERNEL)
-#    include <machine/teensy.h>
 #    define LED_KERNEL_INIT() teensy_led_init()
 #    define LED_KERNEL_ON() teensy_led_on()
 #    define LED_KERNEL_OFF() teensy_led_off()
@@ -114,11 +115,13 @@ daddr_t dumplo = (daddr_t) 1024;
  * Machine dependent startup code
  */
 void startup() {
+    mpuinit();
+    
     /**
-     * set some interrupt priorities.
+     * set pendsv & svcall priorities. systick has already been set to
+     * SPL_CLOCK in the startup code.
      */
     arm_set_irq_prio(SVCALL_IRQ, SPL_HIGH);   /* syscalls */
-    arm_set_irq_prio(SYSTICK_IRQ, SPL_CLOCK); /* clock */
     arm_set_irq_prio(PENDSV_IRQ, SPL_LEAST);  /* syscalls (wtf?) */
     
     /* Enable all configurable fault handlers. */
@@ -151,7 +154,7 @@ void startup() {
 #if CONS_MAJOR == UART_MAJOR
     uartinit(CONS_MINOR);
 #elif CONS_MAJOR == UARTUSB_MAJOR
-    usbuartinit(CONS_MINOR);
+    uartusbinit(CONS_MINOR);
 #endif
 
 
@@ -173,7 +176,43 @@ static void cpuidentify() {
     physmem = 256 * 1024 - 8; /* yes, minus the eight bytes. */
     copystr("MK64FX512", cpu_model, sizeof(cpu_model), NULL);
     printf("MK64FX512");
-    printf(", %u MHz, bus %u MHz\n", CPU_KHZ / 1000, BUS_KHZ / 1000);
+    printf(", %u MHz, bus %u MHz", CPU_KHZ / 1000, BUS_KHZ / 1000);
+#if 1
+    printf(", MPU %s", (MPU_CESR & 1) ? "enabled" : "disabled");
+    if (MPU_CESR & 1) {
+	int mpuregcnt;
+
+        mpuregcnt = (MPU_CESR & (1 << 9)) ? 16 : ((MPU_CESR & (1 << 8)) ? 12 : 8);
+        printf(", %d regions\n", mpuregcnt);
+        for (int i = 0; i < mpuregcnt; i++) {
+            unsigned int *regstart, *regend, *regword2, *regword3, *rgdaac;
+            /**
+             * MPU_CESR       =  0x4000D000 
+             * MPU_RGDi_WORD0 =  MPU_CESR + 0x400 + (0x10 * i) 
+             * MPU_RGDi_WORD1 =  MPU_CESR + 0x404 + (0x10 * i) 
+             * MPU_RGDi_WORD2 =  MPU_CESR + 0x408 + (0x10 * i) 
+             * MPU_RGDi_WORD3 =  MPU_CESR + 0x40C + (0x10 * i) 
+             * MPU_RGDAACi    =  MPU_CESR + 0x800 + (0x04 * i)
+             */
+
+            regstart = (unsigned int *)  (0x4000D000 + 0x400 + (0x10 * i));
+            regend = (unsigned int *) (0x4000D000 + 0x404 + (0x10 * i));
+            regword2 = (unsigned int *) (0x4000D000 + 0x408 + (0x10 * i));
+            regword3 = (unsigned int *) (0x4000D000 + 0x40C + (0x10 * i));
+            rgdaac = (unsigned int *) (0x4000D000 + 0x800 + (0x04 * i));
+
+            if (!(*regword3 & 1)) { /* region deemed invalid by MPU */
+                continue;
+            }
+
+            printf("mpu: region %d: %08x-%08x, RGDAAC%d %08x\n",
+		   i, *regstart, *regend | 0x1f, i, *rgdaac);
+        }
+    } else {
+        printf("\n");
+    }
+#endif
+
     printf("oscillator: ");
     printf("oscillating\n");
 }
@@ -299,9 +338,18 @@ register int howto;
         /* NOTREACHED */
     }
     printf("halted\n");
-    mdelay(1000);
-    while (1)
-        ;
+    GPIOC_PCOR = (1<<5);
+    while (1) {
+	mdelay(5000);
+	GPIOC_PTOR = (1<<5);
+	mdelay(100);
+	GPIOC_PTOR = (1<<5);
+	mdelay(100);
+	GPIOC_PTOR = (1<<5);
+	mdelay(100);
+	GPIOC_PTOR = (1<<5);
+	mdelay(100);
+    };
 #ifdef HALTREBOOT
     printf("press any key to reboot...\n");
     cngetc();
@@ -550,6 +598,7 @@ int strncmp(const char *s1, const char *s2, size_t n) {
 /* Nonzero if pointer is not aligned on a "sz" boundary.  */
 #define UNALIGNED(p, sz) ((unsigned) (p) & ((sz) - 1))
 
+#ifdef USE_RETROBSD_BCOPY
 /*
  * Copy data from the memory region pointed to by src0 to the memory
  * region pointed to by dst0.
@@ -599,7 +648,14 @@ void *memcpy(void *dst, const void *src, size_t nbytes) {
     bcopy(src, dst, nbytes);
     return dst;
 }
+#else
+void bcopy(const void *src, void *dst, size_t nbytes) {
+    /* printf("bcopy (%08x, %08x, %d)\n", src, dst, nbytes); */
+    memcpy(dst, src, nbytes);
+}
+#endif
 
+#ifdef USE_RETROBSD_BZERO
 /*
  * Fill the array with zeroes.
  */
@@ -635,6 +691,11 @@ void bzero(void *dst0, size_t nbytes) {
     while (nbytes--)
         *dst++ = 0;
 }
+#else
+void bzero(void *dst0, size_t nbytes) {
+    memset(dst0, 0, nbytes);
+}
+#endif
 
 /*
  * Compare not more than nbytes of data pointed to by m1 with

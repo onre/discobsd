@@ -17,7 +17,7 @@
 #include <sys/errno.h>
 #include <machine/spi.h>
 #include <machine/uart.h>
-#include <machine/usb_uart.h>
+#include <machine/uartusb.h>
 
 #include <sys/swap.h>
 

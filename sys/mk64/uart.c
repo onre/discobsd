@@ -72,14 +72,12 @@ struct tty uartttys[NUART];
  */
 static volatile uint8_t transmitting;
 
-#if 0
 void uart0_status_isr(void) {
     uartintr(makedev(UART_MAJOR, 0));
 }
 void uart0_error_isr(void) {
     uartintr(makedev(UART_MAJOR, 0));
 }
-#endif
 
 void uartinit(int unit) {
     register KINETISK_UART_t *inst;

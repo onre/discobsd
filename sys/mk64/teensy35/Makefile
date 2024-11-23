@@ -1,6 +1,6 @@
 PARAM = -DTEENSY35
 PARAM += -DMK64FX512
-PARAM += -DUSBUART1_ENABLED
+PARAM += -DUARTUSB1_ENABLED
 PARAM += -DSDIO_ENABLED
 PARAM += -DSD_ENABLED
 PARAM += -DTEENSY_LED_KERNEL
@@ -31,7 +31,7 @@ DEFS=		${INCLUDES} ${PARAM} -DKERNEL ${DEPFLAGS} -D__MK64FX512__
 CWARNFLAGS=	-Wall
 
 CMACHCPU=	-mcpu=cortex-m4
-CMACHFLAGS=	-mthumb -ffreestanding -fno-builtin -fcommon 
+CMACHFLAGS=	-mthumb -ffreestanding -fno-builtin -fcommon -mno-unaligned-access
 CMACHFLAGS+=	-mfloat-abi=hard -mfpu=fpv4-sp-d16 -fsingle-precision-constant -nostdlib 
 CMACHFLAGS+=	-mabi=aapcs -mlittle-endian # -fdata-sections -ffunction-sections
 CMACHFLAGS+=	${CMACHCPU}
@@ -59,10 +59,10 @@ OBJS = exec_aout.o exec_conf.o exec_elf.o exec_script.o exec_subr.o \
 	ufs_namei.o ufs_subr.o ufs_syscalls.o ufs_syscalls2.o \
 	vfs_vnops.o vm_sched.o vm_swap.o vm_swp.o machdep.o mem.o \
 	mk64fx512.o startup_mk64fx512.o clock.o cons.o devsw.o fault.o \
-	signal.o swap.o syscall.o sysctl.o systick.o usb_uart.o teensy.o \
+	signal.o swap.o syscall.o sysctl.o systick.o uartusb.o teensy.o \
 	teensy_usb_desc.o teensy_usb_dev.o teensy_usb_mem.o \
-	teensy_usb_serial.o memset.o locore.o sys_ultoa.o sd.o \
-	sdio_card.o sdio.o mk6x_sdio.o 
+	teensy_usb_serial.o memset.o memcpy-armv7m.o locore.o \
+	sys_ultoa.o sd.o sdio_card.o sdio.o mk6x_sdio.o 
 
 CFILES = $S/kern/exec_aout.c $S/kern/exec_conf.c $S/kern/exec_elf.c \
 	$S/kern/exec_script.c $S/kern/exec_subr.c $S/kern/init_main.c \
@@ -84,7 +84,7 @@ CFILES = $S/kern/exec_aout.c $S/kern/exec_conf.c $S/kern/exec_elf.c \
 	$S/mk64/mem.c $S/mk64/mk64fx512.c $S/mk64/startup_mk64fx512.c \
 	$S/mk64/clock.c $S/mk64/cons.c $S/mk64/devsw.c $S/mk64/fault.c \
 	$S/mk64/signal.c $S/mk64/swap.c $S/mk64/syscall.c \
-	$S/mk64/sysctl.c $S/mk64/systick.c $S/mk64/usb_uart.c \
+	$S/mk64/sysctl.c $S/mk64/systick.c $S/mk64/uartusb.c \
 	$S/mk64/teensy.c $S/mk64/teensy_usb_desc.c \
 	$S/mk64/teensy_usb_dev.c $S/mk64/teensy_usb_mem.c \
 	$S/mk64/teensy_usb_serial.c $S/mk64/sys_ultoa.c $S/mk64/sd.c \
@@ -97,12 +97,12 @@ CFILES = $S/kern/exec_aout.c $S/kern/exec_conf.c $S/kern/exec_elf.c \
 #	${SYSTEM_LD} swapxxx.o
 #	${SYSTEM_LD_TAIL}
 SYSTEM_OBJ=	${OBJS} ioconf.o
-SYSTEM_DEP=	Makefile ioconf.c machine sys .deps ${SYSTEM_OBJ}
+SYSTEM_DEP=	Config ../Makefile.kconf Makefile ioconf.c machine sys .deps ${SYSTEM_OBJ}
 SYSTEM_LD_HEAD=	sh $S/conf/newvers.sh > vers.c; ${CC} ${CFLAGS} -c vers.c; rm -f $@
 SYSTEM_LD=	-@echo ${LD} ${LDFLAGS} '$${SYSTEM_OBJ}' vers.o -o $@ ${LDADD}; \
 		${LD} ${LDFLAGS} ${SYSTEM_OBJ} vers.o -o $@ ${LDADD}
 SYSTEM_LD_TAIL  = ${ARM_GCC_PREFIX}-readelf -S $@; \
-		  ${ARM_GCC_PREFIX}-nm -Sn $@|egrep '[es]data|[es]text|[es]bss|[kernel|user]_data_'; \
+		  ${ARM_GCC_PREFIX}-nm -Sn $@|egrep 'u_|estack|[es]data|[es]text|[es]bss|[kernel|user]_data_'; \
 		  $(OBJCOPY) -O ihex -R .eeprom $@ $@.hex; \
                   $(OBJDUMP) -d -S $@ > $@.dis; \
 		  ./post.sh
@@ -118,6 +118,8 @@ swapunix.o: swapunix.c
 
 all: unix
 
+sys/kconfig.h:	
+	${MAKE} reconfig
 clean:
 	rm -rf .deps unix *.elf *.o *.map *.dis *.bin machine sys
 
@@ -324,7 +326,7 @@ sysctl.o: $S/mk64/sysctl.c
 systick.o: $S/mk64/systick.c
 	${COMPILE_C}
 
-usb_uart.o: $S/mk64/usb_uart.c
+uartusb.o: $S/mk64/uartusb.c
 	${COMPILE_C}
 
 teensy.o: $S/mk64/teensy.c
@@ -343,6 +345,9 @@ teensy_usb_serial.o: $S/mk64/teensy_usb_serial.c
 	${COMPILE_C}
 
 memset.o: $S/mk64/memset.S
+	${COMPILE_S}
+
+memcpy-armv7m.o: $S/mk64/memcpy-armv7m.S
 	${COMPILE_S}
 
 locore.o: $S/mk64/locore.S
