@@ -10,6 +10,7 @@
 #include <sys/buf.h>
 #include <sys/systm.h>
 #include <sys/vm.h>
+#include <machine/debug.h>
 
 /*
  * Swap a process in.
@@ -22,6 +23,7 @@ void
 swapin (p)
     register struct proc *p;
 {
+    DEBUG("\tswapin(): start\n");
     size_t daddr = (size_t)__user_data_start;
     size_t saddr = (size_t)__user_data_end - p->p_ssize;
     size_t uaddr = (size_t) &u0;
@@ -47,6 +49,7 @@ swapin (p)
 #ifdef UCB_METER
     cnt.v_swpin++;
 #endif
+    DEBUG("\tswapin(): end\n");
 }
 
 /*
@@ -67,6 +70,9 @@ swapout (p, freecore, odata, ostack)
 {
     size_t a[3];
 
+    DEBUG("\tswapout(): start\n");
+    DEBUG("\tswapout(): swapping out PID %d\n", p->p_pid);
+    DEBUG("\tswapout(): daddr %08x saddr %08x dsize %08x ssize %08x\n", p->p_daddr, p->p_saddr, p->p_dsize, p->p_ssize);
     if (odata == (u_int) X_OLDSIZE)
         odata = p->p_dsize;
     if (ostack == (u_int) X_OLDSIZE)
@@ -112,4 +118,5 @@ swapout (p, freecore, odata, ostack)
         runout = 0;
         wakeup ((caddr_t)&runout);
     }
+    DEBUG("\tswapout(): end\n");
 }
