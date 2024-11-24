@@ -27,4 +27,10 @@
 
 unsigned int systick_ms;
 
-void systick_isr(void) { systick_ms++; }
+void systick_isr(void) {
+    int s;
+
+    s = splclock();
+    systick_ms++;
+    splx(s);
+}

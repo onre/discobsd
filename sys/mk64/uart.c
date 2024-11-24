@@ -121,7 +121,7 @@ void uartinit(int unit) {
 	inst->RWFIFO = 4; // rx watermark, causes S1_RDRF to set
 	inst->PFIFO = UART_PFIFO_TXFE | UART_PFIFO_RXFE;
 	inst->C2 = C2_TX_INACTIVE;
-	NVIC_SET_PRIORITY(IRQ_UART0_STATUS, IRQ_PRIORITY);
+	arm_set_irq_prio(IRQ_UART0_STATUS, SPL_TTY);
 	break;
     default:
 	printf("uart: wtf\n");

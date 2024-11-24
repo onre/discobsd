@@ -40,12 +40,21 @@ static inline void arm_attach_isr(enum IRQ_NUMBER_t irq,
     _VectorsRam[irq + 16] = function;
 }
 
+/** 
+ * it is not this simple. see nvic_execution_priority() for details.
+ */
+
+#if 0
 static __inline unsigned int
 get_basepri(void) {
     unsigned int result;
-
     asm volatile("mrs %0, basepri" : "=r" (result));
     return result;
+}
+#endif
+
+static __inline unsigned int get_basepri(void) {
+    return !!nvic_execution_priority();
 }
 
 static __inline void

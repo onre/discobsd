@@ -1,5 +1,5 @@
-#ifndef _USB_UART_H
-#define _USB_UART_H
+#ifndef _UARTUSB_H
+#define _UARTUSB_H
 
 #ifdef KERNEL
 
@@ -9,20 +9,22 @@
 #define RX_BUFFER_SIZE 64
 #define TX_BUFFER_SIZE 64
 
-void            uartusbinit(int unit);
-int             usbuartopen(dev_t dev, int flag, int mode);
-int             usbuartclose(dev_t dev, int flag, int mode);
-int             usbuartread(dev_t dev, struct uio *uio, int flag);
-int             usbuartwrite(dev_t dev, struct uio *uio, int flag);
-int             usbuartselect(dev_t dev, int rw);
-int             usbuartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag);
-void            usbuartintr(dev_t dev);
-void            usbuartstart(struct tty *tp);
-void            usbuartputc(dev_t dev, char c);
-char            usbuartgetc(dev_t dev);
+void            ftm0_isr(void);
 
-extern struct   tty usbuartttys[1];
+void            uartusbinit(int unit);
+int             uartusbopen(dev_t dev, int flag, int mode);
+int             uartusbclose(dev_t dev, int flag, int mode);
+int             uartusbread(dev_t dev, struct uio *uio, int flag);
+int             uartusbwrite(dev_t dev, struct uio *uio, int flag);
+int             uartusbselect(dev_t dev, int rw);
+int             uartusbioctl(dev_t dev, u_int cmd, caddr_t addr, int flag);
+void            uartusbintr(dev_t dev);
+void            uartusbstart(struct tty *tp);
+void            uartusbputc(dev_t dev, char c);
+char            uartusbgetc(dev_t dev);
+
+extern struct   tty uartusbttys[1];
 
 #endif /* KERNEL */
 
-#endif /* !_USB_UART_H */
+#endif /* !_UARTUSB_H */

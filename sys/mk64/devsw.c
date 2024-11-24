@@ -182,9 +182,9 @@ const struct cdevsw cdevsw[] = {
 },
 {   /* 7 - tty usb */
 #if defined(TEENSY35) && defined (USB_SERIAL)
-    usbuartopen,       usbuartclose,      usbuartread,       usbuartwrite,
-    usbuartioctl,      nulldev,        usbuartttys,       usbuartselect,
-    nostrategy,     usbuartgetc,       usbuartputc,
+    uartusbopen,       uartusbclose,      uartusbread,       uartusbwrite,
+    uartusbioctl,      nulldev,        uartusbttys,       uartusbselect,
+    nostrategy,     uartusbgetc,       uartusbputc,
 #else
     NOCDEV
 #endif

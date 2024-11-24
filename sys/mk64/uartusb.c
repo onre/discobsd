@@ -1,5 +1,5 @@
 /*
- * Teensy 3.5 virtual serial over USB. For now, only one.
+ * Teensy 3.5 virtual serial over USB. 
  *
  * Copyright (c) 1986 Regents of the University of California.
  * All rights reserved.  The Berkeley software License Agreement
@@ -15,11 +15,15 @@
 #include <sys/kconfig.h>
 
 #include <machine/uartusb.h>
+#include <machine/machparam.h>
+#include <machine/teensy_usb_dev.h>
 #include <machine/teensy_usb_serial.h>
 
-struct tty usbuartttys[1];
+#define EOF (-1)
 
-void cnstart(struct tty *tp);
+struct tty uartusbttys[1];
+
+void uartusbstart(struct tty *tp);
 
 struct uartusb_inst {
     volatile u_char rx_buffer[RX_BUFFER_SIZE];
@@ -32,6 +36,18 @@ struct uartusb_inst {
 
 static struct uartusb_inst uartusb[1] = {{{0}, {0}, 0, 0, 0, 0}};
 
+/**
+ * ...I know.
+ */
+void ftm0_isr(void) {
+    int s;
+    s = spltty();
+
+    usb_isr();
+
+    splx(s);
+}
+
 void uartusbinit(int unit) {
     register struct uartusb_inst *inst; 
     
@@ -39,9 +55,11 @@ void uartusbinit(int unit) {
         return;
 
     inst = &uartusb[unit];
+    if (unit == 0)
+	usb_serial_set_callback(uartusbintr);
 }
 
-int usbuartopen(dev_t dev, int flag, int mode) {
+int uartusbopen(dev_t dev, int flag, int mode) {
     register struct uartusb_inst *uip; 
     register struct tty *tp;
     register int unit = minor(dev);
@@ -49,10 +67,11 @@ int usbuartopen(dev_t dev, int flag, int mode) {
     if (unit != 0)
         return (ENXIO);
 
-    tp          = &usbuartttys[unit];
+    tp          = &uartusbttys[unit];
 
     uip         = (struct uartusb_inst *) tp->t_addr;
-    tp->t_oproc = usbuartstart;
+    tp->t_oproc = uartusbstart;
+
     if ((tp->t_state & TS_ISOPEN) == 0) {
         if (tp->t_ispeed ==
             0) { /* it's usb, the speed specified here is irrelevant */
@@ -67,26 +86,26 @@ int usbuartopen(dev_t dev, int flag, int mode) {
     if ((tp->t_state & TS_XCLUDE) && u.u_uid != 0)
         return (EBUSY);
 
+    if (tp->t_ispeed == 0) {
+	tp->t_ispeed = 115200;
+	tp->t_ospeed = 115200;
+    }
+
     return ttyopen(dev, tp);
 }
 
-/*ARGSUSED*/
-int usbuartclose(dev_t dev, int flag, int mode) {
+int uartusbclose(dev_t dev, int flag, int mode) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[unit];
-
-    if (!tp->t_addr)
-        return ENODEV;
+    register struct tty *tp = &uartusbttys[unit];
 
     ttywflush(tp);
     ttyclose(tp);
     return (0);
 }
 
-/*ARGSUSED*/
-int usbuartread(dev_t dev, struct uio *uio, int flag) {
+int uartusbread(dev_t dev, struct uio *uio, int flag) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[unit];
+    register struct tty *tp = &uartusbttys[unit];
 
     if (!tp->t_addr)
         return ENODEV;
@@ -94,10 +113,9 @@ int usbuartread(dev_t dev, struct uio *uio, int flag) {
     return ttread(tp, uio, flag);
 }
 
-/*ARGSUSED*/
-int usbuartwrite(dev_t dev, struct uio *uio, int flag) {
+int uartusbwrite(dev_t dev, struct uio *uio, int flag) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[unit];
+    register struct tty *tp = &uartusbttys[unit];
 
     if (!tp->t_addr)
         return ENODEV;
@@ -105,9 +123,9 @@ int usbuartwrite(dev_t dev, struct uio *uio, int flag) {
     return ttwrite(tp, uio, flag);
 }
 
-int usbuartselect(dev_t dev, int rw) {
+int uartusbselect(dev_t dev, int rw) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[unit];
+    register struct tty *tp = &uartusbttys[unit];
 
     if (!tp->t_addr)
         return ENODEV;
@@ -115,10 +133,9 @@ int usbuartselect(dev_t dev, int rw) {
     return (ttyselect(tp, rw));
 }
 
-/*ARGSUSED*/
-int usbuartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
+int uartusbioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
     register int unit       = minor(dev);
-    register struct tty *tp = &usbuartttys[unit];
+    register struct tty *tp = &uartusbttys[unit];
     register int error;
 
     if (!tp->t_addr)
@@ -130,137 +147,109 @@ int usbuartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
     return (error);
 }
 
-void usbuartintr(dev_t dev) {
+void uartusbintr(dev_t dev) {
     register int c, s;
     register int unit       = minor(dev);
     register struct tty *tp;
     register struct uartusb_inst *uip;
-    u_char head, tail, n, newhead, avail;
-
-    if (unit != 0)
-	return;
-
-    tp          = &usbuartttys[unit];
-
-    if (!tp->t_addr)
-        return;
-
-    /* one day, a beautiful buffered implementation will arrive here.
-     * that day is not today.
-     */
-
-    uip         = (struct uartusb_inst *) tp->t_addr;
 
     s = spltty();
 
-    avail = usb_serial_available();
+    if (unit != 0)
+	goto out;
 
-    if (avail) {
-        do {
-            ttyinput(usb_serial_getchar(), tp);
-        } while (--avail > 0);
+    tp          = &uartusbttys[unit];
+
+    if (!tp->t_addr) {
+        goto out;
     }
-
-    splx(s);
     
-    if (tp->t_state & TS_BUSY) {
-        tp->t_state &= ~TS_BUSY;
-        ttstart(tp);
-    }
-}
+    /**
+     * should usb_isr() call this when it has data? or what? how?
+     * should this call usb_isr()? what? why?
+     */
+    
+    uip         = (struct uartusb_inst *) tp->t_addr;
 
-/* usb_isr() from teensy_usb_dev.c calls this */
-void usb_uart_isr(void) {
-    usbuartintr(makedev(UARTUSB_MAJOR, 0));
+    if (tp->t_outq.c_cc) {
+        while (tp->t_outq.c_cc) {
+	    c = getc(&tp->t_outq);
+	    usb_serial_putchar(c);
+        }
+
+	if (tp->t_state & TS_BUSY) {
+	    tp->t_state &= ~TS_BUSY;
+	    ttstart(tp);
+	}
+    }
+ out:
+    splx(s);
 }
 
 /*
- * Start (restart) transmission on the given line.
+ * turn off 
  */
-void usbuartstart(struct tty *tp) {
+void uartusbstart(struct tty *tp) {
+    register struct uartusb_inst *uip;
     register int c, s;
+    
+    s = spltty();
+    
+    if (!tp->t_addr)
+        return;
+
+    uip         = (struct uartusb_inst *) tp->t_addr;
+
+    /**
+     * terminal has got other things to do, so let's just bail
+     */
+    if (tp->t_state & (TS_TIMEOUT | TS_BUSY | TS_TTSTOP)) {
+    out:
+        splx(s);
+        return;
+    }
+    ttyowake(tp);
+    if (tp->t_outq.c_cc == 0) /* nothing in queue, so bail out */
+        goto out;
+
+    while (tp->t_outq.c_cc) {
+        c = getc(&tp->t_outq);
+	usb_serial_putchar(c);
+    };
+
+    tp->t_state &= ~TS_BUSY;
+
+    splx(s);
+}
+
+void uartusbputc(dev_t dev, char c) {
+    int unit       = minor(dev);
+    struct tty *tp = &uartusbttys[unit];
+    register int s;
 
     if (!tp->t_addr)
         return;
 
-    /*
-     * Must hold interrupts in following code to prevent
-     * state of the tp from changing.
-     */
     s = spltty();
-    /*
-     * If it is currently active, or delaying, no need to do anything.
-     */
-    if (tp->t_state & (TS_TIMEOUT | TS_BUSY | TS_TTSTOP)) {
-    out:
-        led_control(LED_TTY, 0);
-        splx(s);
-        return;
-    }
 
-    /*
-     * Wake up any sleepers.
-     */
-    ttyowake(tp);
-
-    /*
-     * Now restart transmission unless the output queue is empty.
-     */
-    if (tp->t_outq.c_cc == 0)
-        goto out;
-
-    do {
-        c = getc(&tp->t_outq);
+    if (usb_configuration) {
         usb_serial_putchar(c);
-    } while (tp->t_outq.c_cc);
-
-    tp->t_state &= ~TS_BUSY;
-
-    led_control(LED_TTY, 1);
-    splx(s);
-}
-
-void usbuartputc(dev_t dev, char c) {
-    int unit       = minor(dev);
-    struct tty *tp = &usbuartttys[unit];
-    register int s, timo;
-
-    s = spltty();
-again:
-    /*
-     * Try waiting for the console tty to come ready,
-     * otherwise give up after a reasonable time.
-     */
-#if 0
-    timo = 30000;
-    while (!LL_USART_IsActiveFlag_TXE(uip->inst))
-        if (--timo == 0)
-            break;
-#endif
-
-    if (tp->t_state & TS_BUSY) {
-        usbuartintr(dev);
-        goto again;
     }
-    led_control(LED_TTY, 1);
-    usb_serial_putchar(c);
 
-#if 0
-    timo = 30000;
-    while (!LL_USART_IsActiveFlag_TC(uip->inst))
-        if (--timo == 0)
-            break;
-#endif
-
-    led_control(LED_TTY, 0);
     splx(s);
 }
 
-char usbuartgetc(dev_t dev) {
+char uartusbgetc(dev_t dev) {
     int unit = minor(dev);
     int s, c;
 
     s = spltty();
+
+    if (!usb_configuration) {
+        c = EOF;
+	goto out;
+    }
+
     for (;;) {
         /* Wait for key pressed. */
         if (usb_serial_available()) {
@@ -269,8 +258,7 @@ char usbuartgetc(dev_t dev) {
         }
     }
 
-    /* RXNE flag was cleared by reading DR register */
-
+ out:
     splx(s);
     return (unsigned char) c;
 }
@@ -286,14 +274,14 @@ static int uartusbprobe(struct conf_device *config) {
     if (unit != 0)
         return 0;
 
-    printf("uartusb%d: USB", unit);
+    printf("uartusb%d: enabled", unit);
 
     if (is_console)
         printf(", console");
     printf("\n");
 
     /* Initialize the device. */
-    usbuartttys[unit].t_addr = (caddr_t) &uartusb[unit];
+    uartusbttys[unit].t_addr = (caddr_t) &uartusb[unit];
     if (!is_console)
         uartusbinit(unit);
 

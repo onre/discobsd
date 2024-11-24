@@ -44,8 +44,6 @@
 #define RX_BUFFER_SIZE 64
 #define TX_BUFFER_SIZE 64
 
-#define IRQ_PRIORITY 64
-
 #define SERIAL_7E1 0x02
 #define SERIAL_7O1 0x03
 #define SERIAL_8N1 0x00
