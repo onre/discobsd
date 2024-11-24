@@ -68,8 +68,7 @@ card_read(int unit, unsigned int offset, char *data, unsigned int bcount)
     } else {
         nblocks = (bcount / SECTSIZE) + 1;
     }
-
-#if 0
+#if 0    
     DEBUG("card_read:  bcount: %d\tnblocks: %d\tbcount \% %d: %d\n",
       bcount, nblocks, SECTSIZE, bcount % SECTSIZE);
 #endif
@@ -89,7 +88,7 @@ card_read(int unit, unsigned int offset, char *data, unsigned int bcount)
 int
 card_write(int unit, unsigned offset, char *data, unsigned bcount)
 {
-    int nblocks, state;
+    int nblocks, state, s;
 
     if ((bcount % SECTSIZE) == 0) {
         nblocks = bcount / SECTSIZE;
@@ -101,7 +100,8 @@ card_write(int unit, unsigned offset, char *data, unsigned bcount)
     DEBUG("card_write: bcount: %d\tnblocks: %d\tbcount \% %d: %d\n",
       bcount, nblocks, SECTSIZE, bcount % SECTSIZE);
 #endif
-    return mk6x_sdio_writeSectors(offset<<1, (void *)data, nblocks);
+    s = splbio();
+    state = mk6x_sdio_writeSectors(offset<<1, (void *)data, nblocks);
 
 #if 0
     /* Wait for write completion. */
@@ -115,7 +115,8 @@ card_write(int unit, unsigned offset, char *data, unsigned bcount)
         return 0;
     }
 #endif
-    
+    splx(s);
+
     return 1;
 }
 
