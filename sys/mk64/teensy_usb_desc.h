@@ -1010,7 +1010,6 @@ extern struct usb_string_descriptor_struct usb_string_serial_number;
 
 #endif
 
-#ifdef USB_DESC_LIST_DEFINE
 #    if defined(NUM_ENDPOINTS) && NUM_ENDPOINTS > 0
 // NUM_ENDPOINTS = number of non-zero endpoints (0 to 15)
 extern const uint8_t usb_endpoint_config_table[NUM_ENDPOINTS];
@@ -1024,6 +1023,5 @@ typedef struct {
 
 extern const usb_descriptor_list_t usb_descriptor_list[];
 #    endif // NUM_ENDPOINTS
-#endif     // USB_DESC_LIST_DEFINE
 
 #endif

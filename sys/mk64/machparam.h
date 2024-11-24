@@ -12,6 +12,17 @@
 #error can not define USB_DISABLED and USB_SERIAL simultaneously
 #endif
 
+#ifdef SIMPLE_INTERRUPTS
+#ifdef SET_DEFAULT_INTERRUPT_PRIORITY
+#undef SET_DEFAULT_INTERRUPT_PRIORITY
+#endif
+#else
+#ifndef SET_DEFAULT_INTERRUPT_PRIORITY
+#define SET_DEFAULT_INTERRUPT_PRIORITY
+#endif
+#endif
+
+
 #ifndef ENDIAN
 
 #define MACHINE      "mk64"
@@ -83,7 +94,7 @@
 #if 1 /* XXX Needed for ps, w, smlrc. To be removed. */
 #define USER_DATA_START (0x20000000)
 #define USER_DATA_SIZE                                                 \
-    (192 * 1024) - 8 /* almost 192 kb (196600 bytes) of user RAM. */
+    191 * 1024 /* almost 192 kb (196600 bytes) of user RAM. */
 #define USER_DATA_END (USER_DATA_START + USER_DATA_SIZE)
 
 #define stacktop(siz) (USER_DATA_END)
@@ -104,7 +115,7 @@
 #define USIZE  3072
 #define SSIZE  2048 /* initial stack size (bytes) */
 
-#define MAXMEM (192 * 1024 - 8)
+#define MAXMEM (191 * 1024)
 
 /*
  * Collect kernel statistics by default.
@@ -119,8 +130,8 @@
 /*
  * Macros to decode processor status word.
  */
-#define USERMODE(psr) ((psr & 0x1FFUL) == 0) /* No exceptions. */
-#define BASEPRI(psr)  (get_basepri() == 0)   /* No masking. */
+#define USERMODE(psr) ((psr & 0x1FFUL) == 0)
+#define BASEPRI(psr)  get_basepri()
 
 #define noop()        asm volatile("nop")
 
@@ -151,7 +162,7 @@ void clkstart(void);
 /*
  * the memcpy function from memcpy-armv7m.S
  */
-void *memcpy (void *dst, const void *src, size_t count);
+void *memcpy(void *dst, const void *src, size_t count);
 
 /*
  * memset from memset.S

@@ -28,16 +28,9 @@
 #include <machine/systick.h>
 #include <machine/teensy.h>
 
-#if defined(TEENSY_LED_KERNEL)
-#    define LED_KERNEL_INIT() teensy_led_init()
-#    define LED_KERNEL_ON() teensy_led_on()
-#    define LED_KERNEL_OFF() teensy_led_off()
-
-#else
-#    define LED_KERNEL_INIT() /* Nothing. */
-#    define LED_KERNEL_ON()   /* Nothing. */
-#    define LED_KERNEL_OFF()  /* Nothing. */
-#endif
+#define LED_KERNEL_INIT() /* Nothing. */
+#define LED_KERNEL_ON()   /* Nothing. */
+#define LED_KERNEL_OFF()  /* Nothing. */
 
 #define LED_SWAP_INIT()
 #define LED_SWAP_ON()
@@ -121,33 +114,16 @@ void startup() {
      * set pendsv & svcall priorities. systick has already been set to
      * SPL_CLOCK in the startup code.
      */
-    arm_set_irq_prio(SVCALL_IRQ, SPL_HIGH);   /* syscalls */
+    arm_set_irq_prio(SVCALL_IRQ, SPL_TOP);   /* syscalls */
     arm_set_irq_prio(PENDSV_IRQ, SPL_LEAST);  /* syscalls (wtf?) */
     
     /* Enable all configurable fault handlers. */
     arm_enable_fault(MM_FAULT_ENABLE);
     arm_enable_fault(BF_FAULT_ENABLE);
     arm_enable_fault(UF_FAULT_ENABLE);
-
-    /*
-     * Configure LED pins.
-     */
-    LED_KERNEL_INIT(); /* the only one Paul had money for. */
-
-    LED_KERNEL_ON();
-
-    LED_KERNEL_OFF();
-
-    led_control(LED_ALL, 1);
-    led_control(LED_ALL, 0);
-
-    /*
-     * Configure User Button.
-     */
-    BUTTON_USER_INIT();
-
-    LED_KERNEL_ON();
     
+    ledinit();
+
     /*
      * Early setup for console devices.
      */
@@ -157,28 +133,55 @@ void startup() {
     uartusbinit(CONS_MINOR);
 #endif
 
+    arm_set_irq_prio(IRQ_FTM0, SPL_TTY);
+    arm_enable_irq(IRQ_FTM0);
 
-    /*
-     * When User button is pressed - boot to single user mode.
-     */
-    boothowto = 0;
-    if (BUTTON_USER_PRESSED()) {
-        boothowto |= RB_SINGLE;
-    }
+    usb_enable_spl();
+    
+    /* boothowto = RB_SINGLE; */
 }
 
 static void cpuidentify() {
-    /**
-     * TODO: actually implement this
-     */
+    char cpustr[12] = "Kinetis ?00";
+    u_char family, subfamily, series, pinid;
+
     printf("cpu: ");
 
-    physmem = 256 * 1024 - 8; /* yes, minus the eight bytes. */
-    copystr("MK64FX512", cpu_model, sizeof(cpu_model), NULL);
-    printf("MK64FX512");
-    printf(", %u MHz, bus %u MHz", CPU_KHZ / 1000, BUS_KHZ / 1000);
-#if 1
-    printf(", MPU %s", (MPU_CESR & 1) ? "enabled" : "disabled");
+    family = (SIM_SDID >> 28);
+    subfamily = (SIM_SDID >> 23) & 0xf;
+    series = (SIM_SDID >> 20) & 0xf;
+    /* revision = (SIM_SDID >> 12) & 0xf;
+     * dieid = (SIM_SDID >> 7) & 0x1f;
+     * pinid = SIM_SDID & 0xf;
+     */
+
+    switch (series) {
+    case 0:
+        cpustr[8] = 'K';
+        break;
+    case 1:
+        cpustr[8] = 'L';
+        break;
+    case 0b101:
+        cpustr[8] = 'W';
+        break;
+    case 0b110:
+        cpustr[8] = 'V';
+        break;
+    }
+    cpustr[9] += family;
+    cpustr[10] += subfamily;
+    cpustr[11] = 0;
+
+    copystr(cpustr, cpu_model, sizeof(cpu_model), NULL);
+    printf(cpustr);
+
+    if (subfamily & 1) {
+	printf(" (tamper detect)");
+    }
+
+    printf(", %u MHz, bus %u MHz\n", CPU_KHZ / 1000, BUS_KHZ / 1000);
+    printf("mpu: %s", (MPU_CESR & 1) ? "enabled" : "disabled\n");
     if (MPU_CESR & 1) {
 	int mpuregcnt;
 
@@ -205,14 +208,41 @@ static void cpuidentify() {
                 continue;
             }
 
-            printf("mpu: region %d: %08x-%08x, RGDAAC%d %08x\n",
-		   i, *regstart, *regend | 0x1f, i, *rgdaac);
+            printf("mpu: region %d: 0x%08x-0x%08x flags 0x%08x\n",
+		   i, *regstart, *regend | 0x1f, *rgdaac);
         }
     } else {
         printf("\n");
     }
-#endif
 
+#ifdef TEENSY35
+    physmem = 255 * 1024; /* yes, minus the eight bytes. */
+#else
+    switch ((SIM_SOPT1 >> 12) & 0xF) {
+    case 1:
+	physmem = 8 * 1024; break;
+    case 0b11:
+	physmem = 16 * 1024; break;
+    case 0b100:
+	physmem = 24 * 1024; break;
+    case 0b101:
+	physmem = 32 * 1024; break;
+    case 0b110:
+	physmem = 48 * 1024; break;
+    case 0b111:
+	physmem = 64 * 1024; break;
+    case 0b1000:
+	physmem = 96 * 1024; break;
+    case 0b1001:
+	physmem = 128 * 1024; break;
+    case 0b1011:
+	physmem = 256 * 1024; break;
+    default:
+	physmem = 0;
+	panic("can't read physmem amount");
+    }
+#endif
+    
     printf("oscillator: ");
     printf("oscillating\n");
 }
@@ -320,7 +350,7 @@ register int howto;
         }
         printf("done\n");
     }
-    /* (void) splhigh(); */
+    (void) splhigh();
     if (!(howto & RB_HALT)) {
         if ((howto & RB_DUMP) && dumpdev != NODEV) {
             /*
@@ -338,18 +368,8 @@ register int howto;
         /* NOTREACHED */
     }
     printf("halted\n");
-    GPIOC_PCOR = (1<<5);
-    while (1) {
-	mdelay(5000);
-	GPIOC_PTOR = (1<<5);
-	mdelay(100);
-	GPIOC_PTOR = (1<<5);
-	mdelay(100);
-	GPIOC_PTOR = (1<<5);
-	mdelay(100);
-	GPIOC_PTOR = (1<<5);
-	mdelay(100);
-    };
+
+    LED_ON(LED_FAULT);
 #ifdef HALTREBOOT
     printf("press any key to reboot...\n");
     cngetc();
@@ -382,12 +402,13 @@ register int howto;
 
 unsigned int micros(void) {
     unsigned int count, current, istatus;
+    int s;
 
-    __disable_irq();
+    s = arm_disable_interrupts();
     current = SYST_CVR;
     count   = systick_ms;
     istatus = SCB_ICSR; // bit 26 indicates if systick exception pending
-    __enable_irq();
+    arm_restore_interrupts(s);
     
     if ((istatus & SCB_ICSR_PENDSTSET) && current > 50)
         count++;
@@ -604,35 +625,38 @@ int strncmp(const char *s1, const char *s2, size_t n) {
  * region pointed to by dst0.
  * If the regions overlap, the behavior is undefined.
  */
+
+#define DWORD_TYPE u_long
+
 void bcopy(const void *src0, void *dst0, size_t nbytes) {
     unsigned char *dst       = dst0;
     const unsigned char *src = src0;
-    unsigned *aligned_dst;
-    const unsigned *aligned_src;
+    DWORD_TYPE *aligned_dst;
+    const DWORD_TYPE *aligned_src;
 
-    printf("bcopy (%08x, %08x, %d)\n", src0, dst0, nbytes);
+    /* printf("bcopy (%08x, %08x, %d)\n", src0, dst0, nbytes); */
     
     /* If the size is small, or either SRC or DST is unaligned,
      * then punt into the byte copy loop.  This should be rare.  */
-    if (nbytes >= 4 * sizeof(unsigned) &&
-        !UNALIGNED(src, sizeof(unsigned)) &&
-        !UNALIGNED(dst, sizeof(unsigned))) {
-        aligned_dst = (unsigned *) dst;
-        aligned_src = (const unsigned *) src;
+    if (nbytes >= 4 * sizeof(DWORD_TYPE) &&
+        !UNALIGNED(src, sizeof(DWORD_TYPE)) &&
+        !UNALIGNED(dst, sizeof(DWORD_TYPE))) {
+        aligned_dst = (DWORD_TYPE *) dst;
+        aligned_src = (const DWORD_TYPE *) src;
 
-        /* Copy 4X unsigned words at a time if possible.  */
-        while (nbytes >= 4 * sizeof(unsigned)) {
+        /* Copy 4X DWORD_TYPE words at a time if possible.  */
+        while (nbytes >= 4 * sizeof(DWORD_TYPE)) {
             *aligned_dst++ = *aligned_src++;
             *aligned_dst++ = *aligned_src++;
             *aligned_dst++ = *aligned_src++;
             *aligned_dst++ = *aligned_src++;
-            nbytes -= 4 * sizeof(unsigned);
+            nbytes -= 4 * sizeof(DWORD_TYPE);
         }
 
-        /* Copy one unsigned word at a time if possible.  */
-        while (nbytes >= sizeof(unsigned)) {
+        /* Copy one DWORD_TYPE word at a time if possible.  */
+        while (nbytes >= sizeof(DWORD_TYPE)) {
             *aligned_dst++ = *aligned_src++;
-            nbytes -= sizeof(unsigned);
+            nbytes -= sizeof(DWORD_TYPE);
         }
 
         /* Pick up any residual with a byte copier.  */

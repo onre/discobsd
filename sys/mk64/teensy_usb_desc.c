@@ -28,14 +28,17 @@
  * SOFTWARE.
  */
 
+#define USB_DESC_LIST_DEFINE
+
+#include <machine/intr.h>
+#include <machine/teensy_usb_desc.h>
+#include <machine/kinetis.h>
+#include <machine/sys_ultoa.h>
+
 #ifdef KERNEL
 #if F_CPU >= 20000000
 
-#define USB_DESC_LIST_DEFINE
-#include <machine/teensy_usb_desc.h>
 #ifdef NUM_ENDPOINTS
-#include <machine/kinetis.h>
-#include <machine/sys_ultoa.h>
 
 // USB Descriptors are binary data which the USB host reads to
 // automatically detect a USB device's capabilities.  The format
@@ -1805,8 +1808,9 @@ void usb_init_serialnumber(void)
 {
 	char buf[11];
 	uint32_t i, num;
+	int s;
 
-	__disable_irq();
+	s = arm_disable_interrupts();
 #if defined(HAS_KINETIS_FLASH_FTFA) || defined(HAS_KINETIS_FLASH_FTFL)
 	FTFL_FSTAT = FTFL_FSTAT_RDCOLERR | FTFL_FSTAT_ACCERR | FTFL_FSTAT_FPVIOL;
 	FTFL_FCCOB0 = 0x41;
@@ -1823,7 +1827,7 @@ void usb_init_serialnumber(void)
 	num = *(uint32_t *)&FTFL_FCCOBB;
 	kinetis_hsrun_enable();
 #endif
-	__enable_irq();
+	arm_restore_interrupts(s);
 	// add extra zero to work around OS-X CDC-ACM driver bug
 	if (num < 10000000) num = num * 10;
 	ultoa(num, buf, 10);

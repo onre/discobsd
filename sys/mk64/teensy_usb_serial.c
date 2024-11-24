@@ -51,7 +51,7 @@ static usb_packet_t *rx_packet=NULL;
 static usb_packet_t *tx_packet=NULL;
 static volatile uint8_t tx_noautoflush=0;
 
-#define TRANSMIT_FLUSH_TIMEOUT	1   /* in milliseconds */
+#define TRANSMIT_FLUSH_TIMEOUT	10   /* in milliseconds */
 
 // get the next character, or -1 if nothing received
 int usb_serial_getchar(void)
@@ -94,8 +94,10 @@ int usb_serial_available(void)
 
     count = usb_rx_byte_count(CDC_RX_ENDPOINT);
     if (rx_packet) count += rx_packet->len - rx_packet->index;
+#if 0
     if (count == 0)
 	/* YIELD */;
+#endif
     return count;
 }
 
@@ -265,6 +267,7 @@ int usb_serial_write_buffer_free(void)
 	// buffer data never actually transmitting in some usage cases?  More
 	// investigation is needed.
 	// https://github.com/PaulStoffregen/cores/issues/10#issuecomment-61514955
+	usb_cdc_transmit_flush_timer = TRANSMIT_FLUSH_TIMEOUT;
 	tx_noautoflush = 0;
 	return len;
 }

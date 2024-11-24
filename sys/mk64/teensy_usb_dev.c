@@ -41,7 +41,14 @@
 
 #ifdef KERNEL
 
+#include <sys/types.h>
+#include <sys/conf.h>
+
+#include <machine/intr.h>
+#include <machine/machparam.h>
 #include <machine/kinetis.h>
+
+#include <machine/teensy_usb_desc.h>
 #include <machine/teensy_usb_dev.h>
 #include <machine/teensy_usb_mem.h>
 #include <machine/teensy_usb_serial.h>
@@ -49,7 +56,6 @@
 
 #if F_CPU >= 20000000 && defined(NUM_ENDPOINTS)
 
-#include <string.h> // for memset
 
 // This code has a known bug with compiled with -O2 optimization on gcc 5.4.1
 // https://forum.pjrc.com/threads/53574-Teensyduino-1-43-Beta-2?p=186177&viewfull=1#post186177
@@ -60,6 +66,11 @@
 #pragma GCC optimize ("O3")
 #endif
 #endif
+
+volatile static int usb_use_spl;
+
+static void (*usb_serial_callback)(dev_t dev);
+
 // adding volatile to bdt_t fully solves the bug, right?
 // https://forum.pjrc.com/threads/67081?p=278849&viewfull=1#post278849
 
@@ -155,6 +166,10 @@ uint8_t usb_rx_memory_needed = 0;
 volatile uint8_t usb_configuration = 0;
 volatile uint8_t usb_reboot_timer = 0;
 
+void usb_serial_set_callback(void (*callback)(dev_t dev)) {
+	usb_serial_callback = callback;
+}
+
 
 static void endpoint0_stall(void)
 {
@@ -164,14 +179,6 @@ static void endpoint0_stall(void)
 
 static void endpoint0_transmit(const void *data, uint32_t len)
 {
-#if 0
-	serial_print("tx0:");
-	serial_phex32((uint32_t)data);
-	serial_print(",");
-	serial_phex16(len);
-	serial_print(ep0_tx_bdt_bank ? ", odd" : ", even");
-	serial_print(ep0_tx_data_toggle ? ", d1\n" : ", d0\n");
-#endif
 	table[index(0, TX, ep0_tx_bdt_bank)].addr = (void *)data;
 	table[index(0, TX, ep0_tx_bdt_bank)].desc = BDT_DESC(len, ep0_tx_data_toggle);
 	ep0_tx_data_toggle ^= 1;
@@ -195,7 +202,6 @@ static void usb_setup(void)
 	  case 0x0500: // SET_ADDRESS
 		break;
 	  case 0x0900: // SET_CONFIGURATION
-		//serial_print("configure\n");
 		usb_configuration = setup.wValue;
 		reg = &USB0_ENDPT1;
 		cfg = usb_endpoint_config_table;
@@ -326,9 +332,6 @@ static void usb_setup(void)
 		break;
 	  case 0x0680: // GET_DESCRIPTOR
 	  case 0x0681:
-		//serial_print("desc:");
-		//serial_phex16(setup.wValue);
-		//serial_print("\n");
 		for (list = usb_descriptor_list; 1; list++) {
 			if (list->addr == NULL) break;
 			//if (setup.wValue == list->wValue &&
@@ -343,24 +346,9 @@ static void usb_setup(void)
 				} else {
 					datalen = list->length;
 				}
-#if 0
-				serial_print("Desc found, ");
-				serial_phex32((uint32_t)data);
-				serial_print(",");
-				serial_phex16(datalen);
-				serial_print(",");
-				serial_phex(data[0]);
-				serial_phex(data[1]);
-				serial_phex(data[2]);
-				serial_phex(data[3]);
-				serial_phex(data[4]);
-				serial_phex(data[5]);
-				serial_print("\n");
-#endif
 				goto send;
 			}
 		}
-		//serial_print("desc: not found\n");
 		endpoint0_stall();
 		return;
 	  case 0x2221: // CDC_SET_CONTROL_LINE_STATE
@@ -384,13 +372,11 @@ static void usb_setup(void)
 			break;
 #endif
 		}
-		//serial_print("set control line state\n");
 		break;
 #ifdef CDC_STATUS_INTERFACE
 	  case 0x2321: // CDC_SEND_BREAK
 		break;
 	  case 0x2021: // CDC_SET_LINE_CODING
-		//serial_print("set coding, waiting...\n");
 		return;
 #endif
 
@@ -417,7 +403,6 @@ static void usb_setup(void)
 // TODO: this does not work... why?
 #if defined(SEREMU_INTERFACE) || defined(KEYBOARD_INTERFACE)
 	  case 0x0921: // HID SET_REPORT
-		//serial_print(":)\n");
 		return;
 	  case 0x0A21: // HID SET_IDLE
 		break;
@@ -512,11 +497,6 @@ static void usb_setup(void)
 		return;
 	}
 	send:
-	//serial_print("setup send ");
-	//serial_phex32(data);
-	//serial_print(",");
-	//serial_phex16(datalen);
-	//serial_print("\n");
 
 	if (datalen > setup.wLength) datalen = setup.wLength;
 	size = datalen;
@@ -567,15 +547,9 @@ static void usb_control(uint32_t stat)
 	pid = BDT_PID(b->desc);
 	//count = b->desc >> 16;
 	buf = b->addr;
-	//serial_print("pid:");
-	//serial_phex(pid);
-	//serial_print(", count:");
-	//serial_phex(count);
-	//serial_print("\n");
 
 	switch (pid) {
 	case 0x0D: // Setup received from host
-		//serial_print("PID=Setup\n");
 		//if (count != 8) ; // panic?
 		// grab the 8 byte setup info
 		setup.word1 = *(uint32_t *)(buf);
@@ -590,30 +564,11 @@ static void usb_control(uint32_t stat)
 		ep0_tx_ptr = NULL;
 		if (ep0_tx_data_toggle) {
 		}
-		//if (table[index(0, TX, EVEN)].desc & 0x80) {
-			//serial_print("leftover tx even\n");
-		//}
-		//if (table[index(0, TX, ODD)].desc & 0x80) {
-			//serial_print("leftover tx odd\n");
-		//}
 		table[index(0, TX, EVEN)].desc = 0;
 		table[index(0, TX, ODD)].desc = 0;
 		// first IN after Setup is always DATA1
 		ep0_tx_data_toggle = 1;
 
-#if 0
-		serial_print("bmRequestType:");
-		serial_phex(setup.bmRequestType);
-		serial_print(", bRequest:");
-		serial_phex(setup.bRequest);
-		serial_print(", wValue:");
-		serial_phex16(setup.wValue);
-		serial_print(", wIndex:");
-		serial_phex16(setup.wIndex);
-		serial_print(", len:");
-		serial_phex16(setup.wLength);
-		serial_print("\n");
-#endif
 		// actually "do" the setup request
 		usb_setup();
 		// unfreeze the USB, now that we're ready
@@ -621,7 +576,6 @@ static void usb_control(uint32_t stat)
 		break;
 	case 0x01:  // OUT transaction received from host
 	case 0x02:
-		//serial_print("PID=OUT\n");
 		if (setup.wRequestAndType == 0x2021 /*CDC_SET_LINE_CODING*/) {
 			int i;
 			uint32_t *line_coding = NULL;
@@ -644,13 +598,10 @@ static void usb_control(uint32_t stat)
 			}
 			if (line_coding) {
 				uint8_t *dst = (uint8_t *)line_coding;
-				//serial_print("set line coding ");
 				for (i=0; i<7; i++) {
-					//serial_phex(*buf);
 					*dst++ = *buf++;
 				}
-				//serial_phex32(line_coding[0]);
-				//serial_print("\n");
+
 				if (line_coding[0] == 134) usb_reboot_timer = 15;
 			}
 			endpoint0_transmit(NULL, 0);
@@ -681,9 +632,6 @@ static void usb_control(uint32_t stat)
 		break;
 
 	case 0x09: // IN transaction completed to host
-		//serial_print("PID=IN:");
-		//serial_phex(stat);
-		//serial_print("\n");
 
 		// send remaining data, if any...
 		data = ep0_tx_ptr;
@@ -698,17 +646,10 @@ static void usb_control(uint32_t stat)
 
 		if (setup.bRequest == 5 && setup.bmRequestType == 0) {
 			setup.bRequest = 0;
-			//serial_print("set address: ");
-			//serial_phex16(setup.wValue);
-			//serial_print("\n");
 			USB0_ADDR = setup.wValue;
 		}
 
 		break;
-	//default:
-		//serial_print("PID=unknown:");
-		//serial_phex(pid);
-		//serial_print("\n");
 	}
 	USB0_CTL = USB_CTL_USBENSOFEN; // clear TXSUSPENDTOKENBUSY bit
 }
@@ -721,32 +662,29 @@ static void usb_control(uint32_t stat)
 usb_packet_t *usb_rx(uint32_t endpoint)
 {
 	usb_packet_t *ret;
+	int s;
 	endpoint--;
 	if (endpoint >= NUM_ENDPOINTS) return NULL;
-	__disable_irq();
+	s = arm_disable_interrupts();
 	ret = rx_first[endpoint];
 	if (ret) {
 		rx_first[endpoint] = ret->next;
 		usb_rx_byte_count_data[endpoint] -= ret->len;
 	}
-	__enable_irq();
-	//serial_print("rx, epidx=");
-	//serial_phex(endpoint);
-	//serial_print(", packet=");
-	//serial_phex32(ret);
-	//serial_print("\n");
+	arm_restore_interrupts(s);
 	return ret;
 }
 
 static uint32_t usb_queue_byte_count(const usb_packet_t *p)
 {
 	uint32_t count=0;
+	int s;
 
-	__disable_irq();
+	s = arm_disable_interrupts();
 	for ( ; p; p = p->next) {
 		count += p->len;
 	}
-	__enable_irq();
+	arm_enable_interrupts(s);
 	return count;
 }
 
@@ -774,13 +712,14 @@ uint32_t usb_tx_byte_count(uint32_t endpoint)
 uint32_t usb_tx_packet_count(uint32_t endpoint)
 {
 	const usb_packet_t *p;
+	int s;
 	uint32_t count=0;
 
 	endpoint--;
 	if (endpoint >= NUM_ENDPOINTS) return 0;
-	__disable_irq();
+	s = arm_disable_interrupts();
 	for (p = tx_first[endpoint]; p; p = p->next) count++;
-	__enable_irq();
+	arm_restore_interrupts(s);
 	return count;
 }
 
@@ -797,10 +736,10 @@ void usb_rx_memory(usb_packet_t *packet)
 {
 	unsigned int i;
 	const uint8_t *cfg;
+	int s;
 
 	cfg = usb_endpoint_config_table;
-	//serial_print("rx_mem:");
-	__disable_irq();
+	s = arm_disable_interrupts();
 	for (i=1; i <= NUM_ENDPOINTS; i++) {
 #ifdef AUDIO_INTERFACE
 		if (i == AUDIO_RX_ENDPOINT) continue;
@@ -810,23 +749,19 @@ void usb_rx_memory(usb_packet_t *packet)
 				table[index(i, RX, EVEN)].addr = packet->buf;
 				table[index(i, RX, EVEN)].desc = BDT_DESC(64, 0);
 				usb_rx_memory_needed--;
-				__enable_irq();
-				//serial_phex(i);
-				//serial_print(",even\n");
+				arm_enable_interrupts();
 				return;
 			}
 			if (table[index(i, RX, ODD)].desc == 0) {
 				table[index(i, RX, ODD)].addr = packet->buf;
 				table[index(i, RX, ODD)].desc = BDT_DESC(64, 1);
 				usb_rx_memory_needed--;
-				__enable_irq();
-				//serial_phex(i);
-				//serial_print(",odd\n");
+				arm_enable_interrupts();
 				return;
 			}
 		}
 	}
-	__enable_irq();
+	arm_restore_interrupts(s);
 	// we should never reach this point.  If we get here, it means
 	// usb_rx_memory_needed was set greater than zero, but no memory
 	// was actually needed.
@@ -841,14 +776,12 @@ void usb_rx_memory(usb_packet_t *packet)
 void usb_tx(uint32_t endpoint, usb_packet_t *packet)
 {
 	bdt_t *b = &table[index(endpoint, TX, EVEN)];
+	int s;
 	uint8_t next;
 
 	endpoint--;
 	if (endpoint >= NUM_ENDPOINTS) return;
-	__disable_irq();
-	//serial_print("txstate=");
-	//serial_phex(tx_state[endpoint]);
-	//serial_print("\n");
+	s = arm_disable_interrupts();
 	switch (tx_state[endpoint]) {
 	  case TX_STATE_BOTH_FREE_EVEN_FIRST:
 		next = TX_STATE_ODD_FREE;
@@ -871,23 +804,24 @@ void usb_tx(uint32_t endpoint, usb_packet_t *packet)
 			tx_last[endpoint]->next = packet;
 		}
 		tx_last[endpoint] = packet;
-		__enable_irq();
+		arm_restore_interrupts(s);
 		return;
 	}
 	tx_state[endpoint] = next;
 	b->addr = packet->buf;
 	b->desc = BDT_DESC(packet->len, ((uint32_t)b & 8) ? DATA1 : DATA0);
-	__enable_irq();
+	arm_restore_interrupts(s);
 }
 
 void usb_tx_isochronous(uint32_t endpoint, void *data, uint32_t len)
 {
 	bdt_t *b = &table[index(endpoint, TX, EVEN)];
 	uint8_t next, state;
+	int s;
 
 	endpoint--;
 	if (endpoint >= NUM_ENDPOINTS) return;
-	__disable_irq();
+	s = arm_disable_interrupts();
 	state = tx_state[endpoint];
 	if (state == 0) {
 		next = 1;
@@ -898,7 +832,7 @@ void usb_tx_isochronous(uint32_t endpoint, void *data, uint32_t len)
 	tx_state[endpoint] = next;
 	b->addr = data;
 	b->desc = (len << 16) | BDT_OWN;
-	__enable_irq();
+	arm_restore_interrupts(s);
 }
 
 
@@ -911,16 +845,21 @@ void _reboot_Teensyduino_(void)
 	__builtin_unreachable();
 }
 
-
+void usb_enable_spl(void) {
+    usb_use_spl = 1;
+}
 
 void usb_isr(void)
 {
 	uint8_t status, stat, t;
+	int s;
 
-	//serial_print("isr");
-	//status = USB0_ISTAT;
-	//serial_phex(status);
-	//serial_print("\n");
+        if (usb_use_spl) {
+		s = spltty();
+        } else {
+		s = -1;
+        }
+
 	restart:
 	status = USB0_ISTAT;
 
@@ -975,26 +914,12 @@ void usb_isr(void)
 	if ((status & USB_ISTAT_TOKDNE /* 08 */ )) {
 		uint8_t endpoint;
 		stat = USB0_STAT;
-		//serial_print("token: ep=");
-		//serial_phex(stat >> 4);
-		//serial_print(stat & 0x08 ? ",tx" : ",rx");
-		//serial_print(stat & 0x04 ? ",odd\n" : ",even\n");
 		endpoint = stat >> 4;
 		if (endpoint == 0) {
 			usb_control(stat);
 		} else {
 			bdt_t *b = stat2bufferdescriptor(stat);
 			usb_packet_t *packet = (usb_packet_t *)((uint8_t *)(b->addr) - 8);
-#if 0
-			serial_print("ep:");
-			serial_phex(endpoint);
-			serial_print(", pid:");
-			serial_phex(BDT_PID(b->desc));
-			serial_print(((uint32_t)b & 8) ? ", odd" : ", even");
-			serial_print(", count:");
-			serial_phex(b->desc >> 16);
-			serial_print("\n");
-#endif
 			endpoint--;	// endpoint is index to zero-based arrays
 
 #ifdef AUDIO_INTERFACE
@@ -1022,7 +947,6 @@ void usb_isr(void)
 				usb_free(packet);
 				packet = tx_first[endpoint];
 				if (packet) {
-					//serial_print("tx packet\n");
 					tx_first[endpoint] = packet->next;
 					b->addr = packet->buf;
 					switch (tx_state[endpoint]) {
@@ -1044,7 +968,6 @@ void usb_isr(void)
 					b->desc = BDT_DESC(packet->len,
 						((uint32_t)b & 8) ? DATA1 : DATA0);
 				} else {
-					//serial_print("tx no packet\n");
 					switch (tx_state[endpoint]) {
 					  case TX_STATE_BOTH_FREE_EVEN_FIRST:
 					  case TX_STATE_BOTH_FREE_ODD_FIRST:
@@ -1067,18 +990,8 @@ void usb_isr(void)
 					packet->index = 0;
 					packet->next = NULL;
 					if (rx_first[endpoint] == NULL) {
-						//serial_print("rx 1st, epidx=");
-						//serial_phex(endpoint);
-						//serial_print(", packet=");
-						//serial_phex32((uint32_t)packet);
-						//serial_print("\n");
 						rx_first[endpoint] = packet;
 					} else {
-						//serial_print("rx Nth, epidx=");
-						//serial_phex(endpoint);
-						//serial_print(", packet=");
-						//serial_phex32((uint32_t)packet);
-						//serial_print("\n");
 						rx_last[endpoint]->next = packet;
 					}
 					rx_last[endpoint] = packet;
@@ -1093,8 +1006,6 @@ void usb_isr(void)
 						b->desc = BDT_DESC(64,
 							((uint32_t)b & 8) ? DATA1 : DATA0);
 					} else {
-						//serial_print("starving ");
-						//serial_phex(endpoint + 1);
 						b->desc = 0;
 						usb_rx_memory_needed++;
 					}
@@ -1111,7 +1022,6 @@ void usb_isr(void)
 
 
 	if (status & USB_ISTAT_USBRST /* 01 */ ) {
-		//serial_print("reset\n");
 
 		// initialize BDT toggle bits
 		USB0_CTL = USB_CTL_ODDRST;
@@ -1146,30 +1056,37 @@ void usb_isr(void)
 
 		// is this necessary?
 		USB0_CTL = USB_CTL_USBENSOFEN;
-		return;
+		goto end;
 	}
 
 
 	if ((status & USB_ISTAT_STALL /* 80 */ )) {
-		//serial_print("stall:\n");
 		USB0_ENDPT0 = USB_ENDPT_EPRXEN | USB_ENDPT_EPTXEN | USB_ENDPT_EPHSHK;
 		USB0_ISTAT = USB_ISTAT_STALL;
 	}
 	if ((status & USB_ISTAT_ERROR /* 02 */ )) {
 		uint8_t err = USB0_ERRSTAT;
 		USB0_ERRSTAT = err;
-		//serial_print("err:");
-		//serial_phex(err);
-		//serial_print("\n");
 		USB0_ISTAT = USB_ISTAT_ERROR;
 	}
 
 	if ((status & USB_ISTAT_SLEEP /* 10 */ )) {
-		//serial_print("sleep\n");
 		USB0_ISTAT = USB_ISTAT_SLEEP;
 	}
 
-	usb_uart_isr();
+#ifdef CDC_DATA_INTERFACE
+#if 0
+        if (usb_serial_callback && usb_serial_available()) {
+		usb_serial_callback(makedev(UARTUSB_MAJOR, 0));
+        }
+#endif
+#endif
+
+
+ end:
+	if (s != -1) {
+		splx(s);
+        }
 }
 
 
@@ -1177,9 +1094,6 @@ void usb_isr(void)
 void usb_init(void)
 {
 	int i;
-
-	//serial_begin(BAUD2DIV(115200));
-	//serial_print("usb_init\n");
 
 	usb_init_serialnumber();
 
@@ -1227,8 +1141,8 @@ void usb_init(void)
 	USB0_INTEN = USB_INTEN_USBRSTEN;
 
 	// enable interrupt in NVIC...
-	NVIC_SET_PRIORITY(IRQ_USBOTG, 112);
-	NVIC_ENABLE_IRQ(IRQ_USBOTG);
+	arm_set_irq_prio(IRQ_USBOTG, SPL_TTY);
+	arm_enable_irq(IRQ_USBOTG);
 
 	// enable d+ pullup
 	USB0_CONTROL = USB_CONTROL_DPPULLUPNONOTG;

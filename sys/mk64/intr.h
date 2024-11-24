@@ -19,7 +19,12 @@
 
 #ifdef KERNEL
 
+#ifndef SIMPLE_INTERRUPTS
+#define HARDMODE
+#endif
+
 #include <machine/atomic.h>
+#include <machine/teensy.h>
 #include <machine/mk64fx512.h>
 
 /**
@@ -43,12 +48,13 @@
  *  splclock        16
  *  splhigh          0
  *
- * BASEPRI is an interrupt mask, and BASEPRI_MAX is an alias which
- * prevents one from changing it "in the wrong direction" - as in,
- * through that alias it can only be decreased in value, which means
- * that the mask will match more exceptions than it did before the
- * change. thus BSD spl...() functions should be easy to implement
- * using it.
+ * BASEPRI changes the priority of the currently executing thread in
+ * regard to interrupts. this makes it effectively an interrupt mask,
+ * and BASEPRI_MAX is an alias which prevents one from changing it "in
+ * the wrong direction" - as in, through that alias it can only be
+ * decreased in value, which means that the mask will match more
+ * exceptions than it did before the change. thus BSD spl...()
+ * functions should be easy to implement using it.
  *
  * PRIMASK is a one-bit register preventing all exceptions with
  * configurable priority from executing. it is primarily used for
@@ -69,32 +75,48 @@
  *
  */
 
-#define SPL_LEAST     240
-#define SPL_SOFTCLOCK 224
-#define SPL_NET       192
-#define SPL_BIO       160
-#define SPL_TTY       128
-#define SPL_CLOCK     32
-#define SPL_HIGH      0
+#define SPL_LEAST     224
+#define SPL_SOFTCLOCK 176
+#define SPL_NET       128
+#define SPL_TTY       80
+#define SPL_BIO       64
+#define SPL_CLOCK     48
+#define SPL_HIGH      32
+#define SPL_TOP       16
 
-static inline void arm_enable_interrupts() {
-    __enable_irq();
-    isb();
+static inline int arm_enable_interrupts() {
+    uint32_t primask;
+    primask = __get_primask();
+    __enable_irq_set_barrier();
+    led_intr_ena_on();
+    return primask;
 }
 
-static inline void arm_disable_interrupts() {
-    __disable_irq();
-    isb();
+static inline int arm_disable_interrupts() {
+    uint32_t primask;
+    primask = __get_primask();
+    __disable_irq_set_barrier();
+    led_intr_ena_off();
+    return primask;
+}
+
+static inline void arm_restore_interrupts(int s) {
+    __set_primask(s);
+    __set_barrier();
+    led_intr_ena_on();
 }
 
 static inline void arm_disable_irq(int irq) {
     NVIC_DISABLE_IRQ(irq);
+    __set_barrier();
 }
 
 static inline void arm_enable_irq(int irq) {
     NVIC_ENABLE_IRQ(irq);
+    __set_barrier();
 }
 
+#ifdef HARDMODE
 /**
  * prio is an ARM-style priority mask.
  */
@@ -105,33 +127,87 @@ static inline void arm_set_irq_prio(int irq, int prio) {
 static inline int splraise(int new) {
     int old;
 
-    old = get_basepri();
+    old = nvic_execution_priority();
     set_basepri_max(new);
-    isb();
+    __set_barrier();
     return old;
 }
 
 static inline void splx(int s) {
     set_basepri(s);
-    isb();
+    __set_barrier();
+    switch (s) {
+    case SPL_HIGH:
+        led_spl_high();
+        break;
+    case SPL_CLOCK:
+        led_spl_clock();
+        break;
+    case SPL_TTY:
+        led_spl_tty();
+        break;
+    case SPL_BIO:
+        led_spl_bio();
+        break;
+    case SPL_NET:
+        led_spl_net();
+        break;
+    case SPL_SOFTCLOCK:
+        led_spl_softclock();
+        break;
+    case SPL_LEAST:
+        led_spl_least();
+        break;
+    }
 }
 
 static inline int spl0(void) {
     int old;
 
-    old = get_basepri();
+    old = nvic_execution_priority();
     set_basepri(SPL_LEAST);
-    isb();
+    __set_barrier();
+
+    led_spl_least();
 
     return old;
 }
 
-#define splhigh()      splraise(SPL_HIGH)
-#define splclock()     splraise(SPL_CLOCK)
-#define spltty()       splraise(SPL_TTY)
-#define splbio()       splraise(SPL_BIO)
-#define splnet()       splraise(SPL_NET)
-#define splsoftclock() splraise(SPL_SOFTCLOCK)
+#define splhigh()                                                      \
+    splraise(SPL_HIGH);                                                \
+    led_spl_high();
+#define splclock()                                                     \
+    splraise(SPL_CLOCK);                                               \
+    led_spl_clock();
+#define spltty()                                                       \
+    splraise(SPL_TTY);                                                 \
+    led_spl_tty();
+#define splbio()                                                       \
+    splraise(SPL_BIO);                                                 \
+    led_spl_bio();
+#define splnet()                                                       \
+    splraise(SPL_NET);                                                 \
+    led_spl_net();
+#define splsoftclock()                                                 \
+    splraise(SPL_SOFTCLOCK);                                           \
+    led_spl_softclock();
+
+#else
+
+#define splhigh()      arm_disable_interrupts()
+#define splclock()     arm_disable_interrupts()
+#define spltty()       arm_disable_interrupts()
+#define splbio()       arm_disable_interrupts()
+#define splnet()       arm_disable_interrupts()
+
+#define splsoftclock() arm_enable_interrupts()
+#define spl0()         arm_enable_interrupts()
+
+#define splx(s)        arm_restore_interrupts(s)
+
+#define arm_set_irq_prio(irq, prio)
+
+#endif /* HARDMODE */
 
 #endif /* KERNEL */
 

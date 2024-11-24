@@ -163,6 +163,8 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     time_t syst;
     int bit;
 
+    led_fault_on();
+
     /* MUST read MMFAR and BFAR registers before reading CFSR. */
     unsigned int mmfar      = SCB_MMFAR; /* MemManage Fault Address */
     unsigned int bfar       = SCB_BFAR;  /* BusFault Address */
@@ -176,7 +178,6 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     /* If true, BFAR holds the BusFault fault-triggering address. */
     unsigned int bfarvalid  = cfsr & BFARVALID_BIT; /* CFSR bit[15] */
 
-    led_control(LED_KERNEL, 1);
     syst = u.u_ru.ru_stime;
 #ifdef UCB_METER
     cnt.v_trap++;
@@ -253,6 +254,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     printf("fault entry EXC_RETURN value:\n");
     printf(" lr:\t0x%08x\n", fault_lr);
 
+#if 0
     while (1) {
 	// keep polling some communication while in fault
 	// mode, so we don't completely die.
@@ -261,6 +263,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
 	if (SIM_SCGC4 & SIM_SCGC4_UART1) uart1_status_isr();
 	if (SIM_SCGC4 & SIM_SCGC4_UART2) uart2_status_isr();
     }
+#endif
     
     arm_enable_interrupts();
 

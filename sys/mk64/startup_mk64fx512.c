@@ -30,6 +30,7 @@
 
 #ifdef KERNEL
 
+#include <machine/intr.h>
 #include <machine/machparam.h>
 #include <machine/mk64fx512.h>
 #include <machine/kinetis.h>
@@ -143,56 +144,6 @@ void ResetHandler(void);
 
 void fault_isr(void)
 {
-#if 0
-	uint32_t addr;
-
-	SIM_SCGC4 |= 0x00000400;
-	UART0_BDH = 0;
-	UART0_BDL = 26; // 115200 at 48 MHz
-	UART0_C2 = UART_C2_TE;
-	PORTB_PCR17 = PORT_PCR_MUX(3);
-	ser_print("\nfault: \n??: ");
-        asm("ldr %0, [sp, #52]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\n??: ");
-        asm("ldr %0, [sp, #48]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\n??: ");
-        asm("ldr %0, [sp, #44]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\npsr:");
-        asm("ldr %0, [sp, #40]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\nadr:");
-        asm("ldr %0, [sp, #36]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\nlr: ");
-        asm("ldr %0, [sp, #32]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\nr12:");
-        asm("ldr %0, [sp, #28]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\nr3: ");
-        asm("ldr %0, [sp, #24]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\nr2: ");
-        asm("ldr %0, [sp, #20]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\nr1: ");
-        asm("ldr %0, [sp, #16]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\nr0: ");
-        asm("ldr %0, [sp, #12]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\nr4: ");
-        asm("ldr %0, [sp, #8]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\nlr: ");
-        asm("ldr %0, [sp, #4]" : "=r" (addr) ::);
-        ser_print_hex32(addr);
-        ser_print("\n");
-        asm("ldr %0, [sp, #0]" : "=r" (addr) ::);
-#endif
 	while (1) {
 		// keep polling some communication while in fault
 		// mode, so we don't completely die.
@@ -397,7 +348,7 @@ void (* const _VectorsFlash[NVIC_NUM_INTERRUPTS+16])(void) =
 	pit2_isr,					// 66 PIT Channel 2
 	pit3_isr,					// 67 PIT Channel 3
 	pdb_isr,					// 68 PDB Programmable Delay Block
-	usb_isr,					// 69 USB OTG
+ 	usb_isr,					// 69 USB OTG
 	usb_charge_isr,					// 70 USB Charger Detect
 	unused_isr,					// 71 --
 	dac0_isr,					// 72 DAC0
@@ -449,7 +400,113 @@ const uint8_t flashconfigbytes[16] = {
 extern void *__rtc_localtime; // Arduino build process sets this
 extern void rtc_set(unsigned long t);
 
+/**
+ * possibly terrible idea: use one of the timers for generating interrupts that
+ * keep the USB console UART going. as of now, these are not used for anything.
+ *
+ * clock for each timer is selectable:
+ *
+ *  - system clock
+ *  - fixed-freq clock (the 32,768 kHz one?)
+ *  - external clock
+ *
+ * the prescaler can divide the clock by 1, 2, 4, ..., 128. then there's a free-
+ * running counter of 16 bits width with settable initial and final values, and
+ * it can run either up or up-down. channels are for using this to control other
+ * peripherals and look really interesting for stuff other than this where I just
+ * want to trigger an interrupt constantly.
+ *
+ * "deadtime insertion"? "match triggers"?
+ *
+ * interrupts! these can be generated:
+ *
+ *  - per channel
+ *  - when a counter overflows (this we want)
+ *  - on fault detection
+ *
+ * okay so, the registers!
+ *
+ * FTMx_SC - status & control
+ *
+ *  7  TOF    timer overflow - this becomes 1 once it overflows
+ *  6  TOIE   timer overflow interrupt enable
+ *  5  CPWMS  center-aligned PWM mode select
+ * 4,3 CLKS   clock source selection
+ *             00: none
+ *             01: system clock
+ *             10: fixed-freq clock
+ *             11: external clock
+ * 2-0 PS     prescaler factor selection
+ *             000: divide by 1 (also known as don't divide)
+ *             001: divide by 2
+ *             010: divide by 4
+ *              ...
+ *             111: divide by 128
+ *
+ * FTMx_CNT - the counter itself
+ *
+ *  0-15      the count
+ *
+ * FTMx_MOD - the counter modulo value
+ *
+ *  0-15      the modulo value. write CNT first, then this.
+ *
+ * FTMx_CnSC - channel status & control
+ *
+ *  7  CHF    channel flag
+ *  6  CHIE   channel interrupt enable
+ *  5  MSB    mode select 
+ *  4  MSA     -"-
+ *  3  ELSB    -"-
+ *  2  ELSA    -"-
+ *  1         reserved
+ *  0  DMA    enable DMA
+ *
+ * FTMx_CnV - channel value
+ *
+ *  0-15     the captured or otherwise conjured channel value.
+ *
+ * FTMx_CNTIN - counter initial value
+ *
+ *  0-15     ...yes
+ *
+ * FTMx_STATUS - capture & compare status
+ *
+ *  0-7      copies of each channel's flag aka CHF
+ *
+ * FTMx_MODE - features mode selection
+ *
+ *  7  FAULTIE fault interrupt enable
+ *  6  FAULTM  fault control mode
+ *  5   -"-     00: disabled for all channels
+ *              01: enabled for even-numbered channels, manual clear
+ *              10: enabled for odd-numbered channels, manual clear
+ *              11: enabled for all channels, auto clear
+ *  4  CAPTEST capture test mode enable
+ *  3  PWMSYNC ...this must sound phat
+ *  2  WPDIS   write protection disable
+ *  1  INIT    initialize the channels output
+ *  0  FTMEN   enable FTM so that all features are available
+ *
+ * ...there is too much of this. I just want a timer, let's say 10 times a second?
+ * with 32,768 kHz... hm. this'd make for a 2 Hz thing. with 120 MHz... that is a lot.
+ * it overflows at ~1831 Hz as is, so apply full prescaler to divide that by 128 and
+ * end up with 14,3 Hz. or possibly half of that if "system clock" is the bus clock.
+ * let's see. okay, this could've been done with setting the initial count etc, but
+ * for the first try, the easiest settings are the best.
+ *
+ *  FTMx_SC: TOIE=1, CLKS=01, PS=111
+ *
+ *  other: QUADEN=0, CPWMS=0  <- these mean "count up"
+ *  free-run mode:    FTMEN == 0 && (MOD == 0x0000 || MOD == 0xFFFF)
+ *          or:       FTMEN == 1 && (QUADEN = 0
+ *                                   && CPWMS == 0
+ *                                   && CNTIN == 0x0000
+ *                                   && MOD = 0xFFFF)
+ *
+ */
 void flextimer_init(void) {
+    #if 0
 	FTM0_CNT = 0;
 	FTM0_MOD = DEFAULT_FTM_MOD;
 	FTM0_C0SC = 0x28; // MSnB:MSnA = 10, ELSnB:ELSnA = 10
@@ -458,9 +515,14 @@ void flextimer_init(void) {
 	FTM0_C3SC = 0x28;
 	FTM0_C4SC = 0x28;
 	FTM0_C5SC = 0x28;
+	#endif
+
+	
 #if defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MK64FX512__) || defined(__MK66FX1M0__)
+	#if 0
 	FTM0_C6SC = 0x28;
 	FTM0_C7SC = 0x28;
+	#endif
 #endif
 #if defined(__MK64FX512__) || defined(__MK66FX1M0__)
 	FTM3_C0SC = 0x28;
@@ -472,7 +534,7 @@ void flextimer_init(void) {
 	FTM3_C6SC = 0x28;
 	FTM3_C7SC = 0x28;
 #endif
-	FTM0_SC = FTM_SC_CLKS(1) | FTM_SC_PS(DEFAULT_FTM_PRESCALE);
+	/*	FTM0_SC = FTM_SC_CLKS(1) | FTM_SC_PS(DEFAULT_FTM_PRESCALE); */
 	FTM1_CNT = 0;
 	FTM1_MOD = DEFAULT_FTM_MOD;
 	FTM1_C0SC = 0x28;
@@ -492,6 +554,13 @@ void flextimer_init(void) {
 	FTM3_C1SC = 0x28;
 	FTM3_SC = FTM_SC_CLKS(1) | FTM_SC_PS(DEFAULT_FTM_PRESCALE);
 #endif
+
+#define UART_POLLING_INTERRUPT
+#ifdef UART_POLLING_INTERRUPT
+	FTM0_CNTIN = 1;
+	FTM0_MOD = 0x4FF; /* adjust this to adjust the firing interval */
+	FTM0_SC = FTM_SC_TOIE | FTM_SC_CLKS(0b10) | FTM_SC_CPWMS | FTM_SC_PS(0);
+#endif	
 }
 
 void early_irq_init(void) {
@@ -501,9 +570,10 @@ void early_irq_init(void) {
   SYST_RVR = (F_CPU / 1000) - 1;
   SYST_CVR = 0;
   SYST_CSR = SYST_CSR_CLKSOURCE | SYST_CSR_TICKINT | SYST_CSR_ENABLE;
-  SCB_SHPR3 = 0x20200000;  /* Systick = priority 32 */
+  arm_set_irq_prio(IRQ_SYSTICK, SPL_CLOCK);
+  /* SCB_SHPR3 = 0x20200000;  Systick = priority 32 */
 
-  __enable_irq();
+  arm_enable_interrupts();
 
   /**
    *  relevant bits from Teensyduino internal init func
@@ -539,10 +609,18 @@ void ResetHandler(void)
 
 	WDOG_STCTRLH = WDOG_STCTRLH_ALLOWUPDATE;
 
-	memset(&u, 0, 0x400);
+	memset(&u, 0, 0x800);
 
 	/* turn on double-word stack aligment at first possible moment */
 	SCB_CCR |= SCB_CCR_STKALIGN_MASK;
+	/* ... lets get back to that someday */
+	#if 0
+	SCB_CCR &= ~SCB_CCR_STKALIGN_MASK;
+	SCB_CCR &= ~(1<<3);
+	SCB_CCR &= ~(1<<8);
+	#endif
+
+	
 	/* allow FPU memory access */
 	SCB_CPACR = 0x00F00000;
 
@@ -573,7 +651,6 @@ void ResetHandler(void)
 	/* make the led port writable and turn the led on. */
 	PORTC_PCR5 = PORT_PCR_MUX(1) | PORT_PCR_DSE | PORT_PCR_SRE;
 	GPIOC_PDDR |= (1<<5);
-	GPIOC_PSOR = (1<<5);
 
 	/* src and dest have been initialized at declaration as follows:
 	 *
@@ -617,11 +694,13 @@ void ResetHandler(void)
 	dest = &__user_data_start;
 	while (dest < &__user_data_end) *dest++ = 0;
 	
-	/* copy interrupt vector table from flash to RAM, set medium priority and
-	 * switch over to the RAM copy.
+	/* copy interrupt vector table from flash to RAM, set the "default" priority
+	 * to the lowest level and switch over to the RAM copy of the vector table.
 	 */
 	for (i=0; i < NVIC_NUM_INTERRUPTS + 16; i++) _VectorsRam[i] = _VectorsFlash[i];
-	for (i=0; i < NVIC_NUM_INTERRUPTS; i++) NVIC_SET_PRIORITY(i, 128);
+#ifdef SET_DEFAULT_INTERRUPT_PRIORITY
+	for (i=0; i < NVIC_NUM_INTERRUPTS; i++) NVIC_SET_PRIORITY(i, SPL_LEAST);
+#endif
 	SCB_VTOR = (uint32_t)_VectorsRam;
 
 
@@ -916,7 +995,8 @@ void ResetHandler(void)
 
 	__asm__ volatile("ldr lr,=__user_data_start+1");
 	__asm__ volatile("bx lr");
-	
+
+	LED_ON(LED_FAULT);
 	while (1) ;
 }
 

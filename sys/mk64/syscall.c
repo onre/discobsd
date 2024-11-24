@@ -23,6 +23,34 @@
 
 #include <machine/frame.h>
 #include <machine/intr.h>
+#include <machine/debug.h>
+
+#ifdef GLOBAL_DEBUG
+static void print_arg(val) {
+    if (val & 0xff000000)
+	printf("%08x", val);
+    else
+	printf("%u", val);
+}
+
+static void
+print_args(narg, arg0, arg1, arg2, arg3, arg4, arg5)
+{
+    void print_arg(val) {
+        if (val & 0xff000000)
+            printf("%08x", val);
+        else
+            printf("%u", val);
+    }
+
+    print_arg(arg0);
+    if (narg > 1) { printf(", "); print_arg(arg1); }
+    if (narg > 2) { printf(", "); print_arg(arg2); }
+    if (narg > 3) { printf(", "); print_arg(arg3); }
+    if (narg > 4) { printf(", "); print_arg(arg4); }
+    if (narg > 5) { printf(", "); print_arg(arg5); }
+}
+#endif
 
 /**
  * had to make decisions, opted for Paul's naming.
@@ -45,8 +73,7 @@ void svcall_isr(void) {
     /* Set a PendSV exception to immediately tail-chain into. */
     SCB_ICSR |= SCB_ICSR_PENDSVSET_MASK;
 
-    dsb();
-    isb();
+    __set_barrier();
 
     /* PendSV has lowest priority, so need to allow it to fire. */
     (void) spl0();
@@ -173,7 +200,11 @@ void syscall(struct trapframe *frame) {
     sp = u.u_frame->tf_sp;
     if (sp < u.u_procp->p_daddr + u.u_dsize) {
         /* Process has trashed its stack; give it an illegal
-		 * instruction violation to halt it in its tracks. */
+	 * instruction violation to halt it in its tracks. */
+#ifdef GLOBAL_DEBUG
+	DEBUG("\tsyscall(pid %u): bad stack: sp = 0x%08x daddr = 0x0%08x dsize = 0x%08x, sending SEGV\n",
+	      u.u_procp->p_pid, sp, u.u_procp->p_daddr, u.u_dsize);
+#endif
         psig = SIGSEGV;
         goto bad;
     }
@@ -216,9 +247,17 @@ void syscall(struct trapframe *frame) {
                 u.u_arg[5] = *(u_int *) addr;
         }
     }
-
     u.u_rval = 0;
 
+#ifdef GLOBAL_DEBUG
+    DEBUG("\tsyscall(pid %u): %s (", u.u_procp->p_pid,
+            syscallnames [code >= nsysent ? 0 : code]);
+    if (callp->sy_narg > 0)
+	print_args(callp->sy_narg, u.u_arg[0], u.u_arg[1],
+		   u.u_arg[2], u.u_arg[3], u.u_arg[4], u.u_arg[5]);
+    DEBUG(")\n"); /* was: ") at %08x\n", pc); */
+#endif
+    
     if (setjmp(&u.u_qsave) == 0) {
         (*callp->sy_call)(); /* Make syscall. */
     }

@@ -34,9 +34,11 @@
 #ifdef KERNEL
 
 #define USB_DESC_LIST_DEFINE
-#include <machine/teensy_usb_mem.h>
-#include <machine/teensy_usb_desc.h>
 
+#include <sys/types.h>
+
+#include <machine/teensy_usb_desc.h>
+#include <machine/teensy_usb_mem.h>
 #if F_CPU >= 20000000 && !defined(USB_DISABLED)
 
 // This header is NOT meant to be included when compiling
@@ -57,6 +59,7 @@ uint32_t usb_tx_byte_count(uint32_t endpoint);
 uint32_t usb_tx_packet_count(uint32_t endpoint);
 void usb_tx(uint32_t endpoint, usb_packet_t *packet);
 void usb_tx_isochronous(uint32_t endpoint, void *data, uint32_t len);
+void usb_serial_set_callback(void (*callback)(dev_t dev));
 
 extern volatile uint8_t usb_configuration;
 
@@ -68,7 +71,7 @@ static inline uint32_t usb_rx_byte_count(uint32_t endpoint)
         if (endpoint >= NUM_ENDPOINTS) return 0;
         return usb_rx_byte_count_data[endpoint];
 }
-
+    
 #ifdef SEREMU_INTERFACE
 extern volatile uint8_t usb_seremu_transmit_flush_timer;
 extern void usb_seremu_flush_callback(void);
