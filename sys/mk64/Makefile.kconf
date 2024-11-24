@@ -64,7 +64,7 @@ clean-all: clean
 
 reconfig ioconf.c: Config ../../../tools/kconfig/kconfig
 	rm -f Makefile
-	../../../tools/kconfig/kconfig Config
+	../../../tools/kconfig/kconfig -g Config
 	${MAKE} clean
 
 machine:

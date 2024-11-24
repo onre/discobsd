@@ -23,7 +23,8 @@ options         "CPU_KHZ=120000"            # Oscillator frequency of CPU core
 options         "BUS_KHZ=60000"             # Frequency of peripheral bus
 options		"F_CPU=120000000UL"
 options		"F_BUS=60000000UL"
-# options		"USB_DISABLED"
+options		"GLOBAL_DEBUG"
+#options		"SIMPLE_INTERRUPTS"
 options		"USB_SERIAL"
 options		"NMOUNT=4"
 # options         "HALTREBOOT"                # If halted, press key to reboot
@@ -31,8 +32,6 @@ options		"NMOUNT=4"
 # Root filesystem at /dev/sd0a, swap at /dev/sd0b
 config          unix    root on sd0a
                         swap on sd0b
-
-### 17112024, early: disable everything and try to blink a led or bleep the piezo
 
 # Serial UART ports
 

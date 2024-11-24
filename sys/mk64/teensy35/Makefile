@@ -10,11 +10,13 @@ PARAM += -DCONS_MAJOR=UARTUSB_MAJOR
 PARAM += -DUART_BAUD=115200
 PARAM += -DNMOUNT=4
 PARAM += -DUSB_SERIAL
+PARAM += -DGLOBAL_DEBUG
 PARAM += -DF_BUS=60000000UL
 PARAM += -DF_CPU=120000000UL
 PARAM += -DBUS_KHZ=60000
 PARAM += -DCPU_KHZ=120000
 LDSCRIPT = "teensy35/mk64fx512.ld"
+DEBUG = -g
 #
 # Makefile for DiscoBSD, mk64 target
 #
@@ -128,7 +130,7 @@ clean-all: clean
 
 reconfig ioconf.c: Config ../../../tools/kconfig/kconfig
 	rm -f Makefile
-	../../../tools/kconfig/kconfig Config
+	../../../tools/kconfig/kconfig -g Config
 	${MAKE} clean
 
 machine:
