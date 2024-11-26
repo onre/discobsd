@@ -21,6 +21,8 @@
 
 #define EOF (-1)
 
+#define UARTDEBUG(...) printf(__VA_ARGS__)
+
 struct tty uartusbttys[1];
 
 void uartusbstart(struct tty *tp);
@@ -36,27 +38,15 @@ struct uartusb_inst {
 
 static struct uartusb_inst uartusb[1] = {{{0}, {0}, 0, 0, 0, 0}};
 
-/**
- * ...I know.
- */
-void ftm0_isr(void) {
-    int s;
-    s = spltty();
-
-    usb_isr();
-
-    splx(s);
-}
-
 void uartusbinit(int unit) {
-    register struct uartusb_inst *inst; 
-    
+    register struct uartusb_inst *inst;
+
     if (unit != 0)
         return;
 
     inst = &uartusb[unit];
     if (unit == 0)
-	usb_serial_set_callback(uartusbintr);
+        usb_serial_set_callback(uartusbintr);
 }
 
 int uartusbopen(dev_t dev, int flag, int mode) {
@@ -155,6 +145,9 @@ void uartusbintr(dev_t dev) {
 
     s = spltty();
 
+    if (!usb_configuration)
+	goto out;
+    
     if (unit != 0)
 	goto out;
 
@@ -163,13 +156,19 @@ void uartusbintr(dev_t dev) {
     if (!tp->t_addr) {
         goto out;
     }
-    
+
     /**
      * should usb_isr() call this when it has data? or what? how?
      * should this call usb_isr()? what? why?
      */
     
     uip         = (struct uartusb_inst *) tp->t_addr;
+
+    while (usb_serial_available()) {
+	c = usb_serial_getchar();
+	ttyinput(c, tp);
+    }
+
 
     if (tp->t_outq.c_cc) {
         while (tp->t_outq.c_cc) {
@@ -194,13 +193,13 @@ void uartusbstart(struct tty *tp) {
     register int c, s;
     
     s = spltty();
-    
+
     if (!tp->t_addr)
         return;
 
     uip         = (struct uartusb_inst *) tp->t_addr;
 
-    /**
+   /**
      * terminal has got other things to do, so let's just bail
      */
     if (tp->t_state & (TS_TIMEOUT | TS_BUSY | TS_TTSTOP)) {
@@ -219,7 +218,7 @@ void uartusbstart(struct tty *tp) {
 
     tp->t_state &= ~TS_BUSY;
 
-    splx(s);
+    goto out;
 }
 
 void uartusbputc(dev_t dev, char c) {

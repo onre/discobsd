@@ -15,22 +15,24 @@
 #include <sys/systm.h>
 #include <sys/kconfig.h>
 
+#include <machine/debug.h>
 #include <machine/uart.h>
 #include <machine/kinetis.h>
+#include <machine/intr.h>
 
 #define CONCAT(x, y) x##y
-#define BBAUD(x) CONCAT(B, x)
+#define BBAUD(x)     CONCAT(B, x)
 
 #ifndef UART_BAUD
-#        define UART_BAUD 115200
+#define UART_BAUD 115200
 #endif
 
 struct uart_inst {
-    KINETISK_UART_t *inst;
+    volatile KINETISK_UART_t *regs;
     u_char rx_pin_num;
     u_char tx_pin_num;
-    volatile u_long *regbase; /* 00 pdor - can be 20, 40, 80, ...
-			       * 04 psor
+    volatile u_int *regbase; /* 00 pdor - can be 20, 40, 80, ...
+			      * 04 psor
 			       * 08 pcor
 			       * 0C ptor
 			       * 10 pdir
@@ -46,21 +48,21 @@ struct uart_inst {
 
 static struct uart_inst uart[NUART] = {
 #ifdef TEENSY35
-    {&(*(KINETISK_UART_t *) UART0_ADDR), 16, 17, &GPIOB_PDOR},
+    {&KINETISK_UART0, 16, 17, &GPIOB_PDOR},
 #if 0
     {&(*(KINETISK_UART_t *) UART1_ADDR)},
     {&(*(KINETISK_UART_t *) UART2_ADDR)},
     {&(*(KINETISK_UART_t *) UART3_ADDR)},
     {&(*(KINETISK_UART_t *) UART4_ADDR)},
     {&(*(KINETISK_UART_t *) UART5_ADDR)}
-#    else
+#else
     {},
     {},
     {},
     {},
-    {}    
-#    endif
-    
+    {}
+#endif
+
 #endif
 };
 
@@ -71,62 +73,100 @@ struct tty uartttys[NUART];
  * we can get away with this. 
  */
 static volatile uint8_t transmitting;
+static volatile uint8_t alive;
 
 void uart0_status_isr(void) {
-    uartintr(makedev(UART_MAJOR, 0));
+    if (alive == 1)
+        uartintr(makedev(UART_MAJOR, 0));
 }
 void uart0_error_isr(void) {
-    uartintr(makedev(UART_MAJOR, 0));
+    if (alive == 1)
+        uartintr(makedev(UART_MAJOR, 0));
 }
 
 void uartinit(int unit) {
-    register KINETISK_UART_t *inst;
-    int divisor;
+    struct uart_inst *inst;
+    int divisor, c, s;
+
+    s = arm_disable_interrupts();
+
+    SIM_SCGC4 |= SIM_SCGC4_UART0;
 
     if (unit != 0) {
         printf("uart: unit != 0 not supported yet\n");
         return;
     }
 
-    inst = uart[unit].inst;
-    
+    inst = &uart[unit];
+
     switch (unit) {
     case 0:
     case 1:
+        arm_disable_irq(IRQ_UART0_STATUS);
+        arm_disable_irq(IRQ_UART0_ERROR);
+
         if (unit == 0) {
-            /* TODO: a fancy abstraction for these. */
             PORTB_PCR16 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
                           PORT_PCR_MUX(3);
             PORTB_PCR17 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
-	    uart[unit].rx_pin_num = 0;
-	    uart[unit].tx_pin_num = 1;
+            uart[unit].rx_pin_num = 0;
+            uart[unit].tx_pin_num = 1;
         } else {
             PORTB_PCR16 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
                           PORT_PCR_MUX(3);
             PORTB_PCR17 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
-	    uart[unit].rx_pin_num = 0;
-	    uart[unit].tx_pin_num = 1;
+            uart[unit].rx_pin_num = 0;
+            uart[unit].tx_pin_num = 1;
         }
 
         divisor = BAUD2DIV(115200);
-	
+
         /* fixed 115200 for now */
-	if (divisor < 32) divisor = 32;
-	UART0_BDH = (divisor >> 13) & 0x1F;
-	UART0_BDL = (divisor >> 5) & 0xFF;
-	UART0_C4 = divisor & 0x1F;
-	
-	inst->C1 = UART_C1_ILT;
-	inst->TWFIFO = 2; // tx watermark, causes S1_TDRE to set
-	inst->RWFIFO = 4; // rx watermark, causes S1_RDRF to set
-	inst->PFIFO = UART_PFIFO_TXFE | UART_PFIFO_RXFE;
-	inst->C2 = C2_TX_INACTIVE;
-	arm_set_irq_prio(IRQ_UART0_STATUS, SPL_TTY);
-	break;
+        if (divisor < 32)
+            divisor = 32;
+
+#if 0
+        UART0_BDH    = (divisor >> 13) & 0x1F;
+        UART0_BDL    = (divisor >> 5) & 0xFF;
+        UART0_C4     = divisor & 0x1F;
+#endif
+        UART0_BDH    = 0;
+        UART0_BDL    = 65;
+        UART0_C4     = 0b00011; /* this or 0b00011 */
+
+        UART0_C1     = UART_C1_ILT;
+        UART0_C2     = C2_TX_INACTIVE;
+
+        UART0_TWFIFO = 2; // tx watermark, causes S1_TDRE to set
+        UART0_RWFIFO = 4; // rx watermark, causes S1_RDRF to set
+
+        UART0_PFIFO  = UART_PFIFO_TXFE | UART_PFIFO_RXFE |
+                      UART_PFIFO_TXFIFOSIZE(6) |
+                      UART_PFIFO_RXFIFOSIZE(6);
+
+        c        = UART0_C1;
+        c        = (c & ~0x13) | (SERIAL_8N1 & 0x03);
+        UART0_C1 = c;
+
+        /*
+	 * deep breath, hope for the best and activate isr
+	 */
+        arm_set_irq_prio(IRQ_UART0_STATUS, SPL_TTY);
+        arm_set_irq_prio(IRQ_UART0_ERROR, SPL_TTY);
+
+        alive = 1;
+
+        arm_enable_irq(IRQ_UART0_ERROR);
+        arm_enable_irq(IRQ_UART0_STATUS);
+
+
+        break;
     default:
-	printf("uart: wtf\n");
-	return;
+        printf("uart: wtf\n");
+        break;
     }
+
+    arm_restore_interrupts(s);
 }
 
 int uartopen(dev_t dev, int flag, int mode) {
@@ -136,42 +176,27 @@ int uartopen(dev_t dev, int flag, int mode) {
     u_char c;
 
     if (unit < 0 || unit >= NUART)
-	return (ENXIO);
+        return (ENXIO);
 
     tp = &uartttys[unit];
     if (!tp->t_addr)
-	return (ENXIO);
+        return (ENXIO);
 
     uip         = (struct uart_inst *) tp->t_addr;
     tp->t_oproc = uartstart;
     if ((tp->t_state & TS_ISOPEN) == 0) {
-	if (tp->t_ispeed == 0) {
-	    tp->t_ispeed = BBAUD(UART_BAUD);
-	    tp->t_ospeed = BBAUD(UART_BAUD);
-	}
-	ttychars(tp);
-	tp->t_state = TS_ISOPEN | TS_CARR_ON;
-	tp->t_flags = ECHO | XTABS | CRMOD | CRTBS | CRTERA |
-	    CTLECH | CRTKIL;
+        if (tp->t_ispeed == 0) {
+            tp->t_ispeed = BBAUD(UART_BAUD);
+            tp->t_ospeed = BBAUD(UART_BAUD);
+        }
+        ttychars(tp);
+        tp->t_state = TS_ISOPEN | TS_CARR_ON;
+        tp->t_flags =
+            ECHO | XTABS | CRMOD | CRTBS | CRTERA | CTLECH | CRTKIL;
     }
     if ((tp->t_state & TS_XCLUDE) && u.u_uid != 0)
-	return (EBUSY);
+        return (EBUSY);
 
-    /* C1, S2, C3 are fields in the UART configuration register.
-     * this isn't as bad as it looks.
-     */
-    c = uip->inst->C1;
-    c = (c & ~0x13) | (SERIAL_8N1 & 0x03);
-    uip->inst->C1 = c;
-    c = uip->inst->S2 & ~0x10;
-    uip->inst->S2 = c;
-    c = uip->inst->C3 & ~0x10;
-    uip->inst->C3 = c;
-
-    /* deep breath - hope for the best - activate isr
-     */
-    NVIC_ENABLE_IRQ(IRQ_UART0_STATUS);
-    
     return ttyopen(dev, tp);
 }
 
@@ -179,9 +204,9 @@ int uartopen(dev_t dev, int flag, int mode) {
 int uartclose(dev_t dev, int flag, int mode) {
     register int unit       = minor(dev);
     register struct tty *tp = &uartttys[unit];
-    
+
     if (!tp->t_addr)
-	return ENODEV;
+        return ENODEV;
 
     ttywflush(tp);
     ttyclose(tp);
@@ -193,7 +218,7 @@ int uartread(dev_t dev, struct uio *uio, int flag) {
     register struct tty *tp = &uartttys[unit];
 
     if (!tp->t_addr)
-	return ENODEV;
+        return ENODEV;
 
     return ttread(tp, uio, flag);
 }
@@ -204,7 +229,7 @@ int uartwrite(dev_t dev, struct uio *uio, int flag) {
     register struct tty *tp = &uartttys[unit];
 
     if (!tp->t_addr)
-	return ENODEV;
+        return ENODEV;
 
     return ttwrite(tp, uio, flag);
 }
@@ -214,7 +239,7 @@ int uartselect(dev_t dev, int rw) {
     register struct tty *tp = &uartttys[unit];
 
     if (!tp->t_addr)
-	return ENODEV;
+        return ENODEV;
 
     return (ttyselect(tp, rw));
 }
@@ -226,11 +251,11 @@ int uartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
     register int error;
 
     if (!tp->t_addr)
-	return ENODEV;
+        return ENODEV;
 
     error = ttioctl(tp, cmd, addr, flag);
     if (error < 0)
-	error = ENOTTY;
+        error = ENOTTY;
     return (error);
 }
 
@@ -252,27 +277,31 @@ void uartintr(dev_t dev) {
     u_char head, tail, n, newhead, avail;
 
     if (!tp->t_addr)
-	return;
+        return;
 
     uip = (struct uart_inst *) tp->t_addr;
 
-    /* receive data above watermark OR idle line */
-    if (uip->inst->S1 & (UART_S1_RDRF | UART_S1_IDLE)) {
-	/* disable irqs to avoid ending up back here with the underrun error  */
-	s = spltty();
+    s   = spltty();
 
-	avail = uip->inst->RCFIFO;
-	/* next two comment blocks verbatim from original source */
-	if (avail == 0) {
-	    /* The only way to clear the IDLE interrupt flag is
+    /* receive data above watermark OR idle line */
+    if (UART0_S1 & (UART_S1_RDRF | UART_S1_IDLE)) {
+        /* disable irqs to avoid ending up back here with the underrun error  */
+        arm_disable_irq(IRQ_UART0_STATUS);
+        arm_disable_irq(IRQ_UART0_ERROR);
+
+        avail = UART0_RCFIFO;
+        /* next two comment blocks verbatim from original source */
+
+        if (avail == 0) {
+            /* The only way to clear the IDLE interrupt flag is
 	     * to read the data register.  But reading with no
 	     * data causes a FIFO underrun, which causes the
 	     * FIFO to return corrupted data.  If anyone from
 	     * Freescale reads this, what a poor design!  There
 	     * write should be a write-1-to-clear for IDLE.
 	     */
-	    c = uip->inst->D;
-	    /* flushing the fifo recovers from the underrun,
+            c           = UART0_D;
+            /* flushing the fifo recovers from the underrun,
 	     * but there's a possible race condition where a
 	     * new character could be received between reading
 	     * RCFIFO == 0 and flushing the FIFO.  To minimize
@@ -282,64 +311,48 @@ void uartintr(dev_t dev) {
 	     * which won't be simple, since we already manage
 	     * which transmit interrupts are enabled.
 	     */
-	    uip->inst->CFIFO = UART_CFIFO_RXFLUSH;
-	    splx(s);
-	} else {
-	    splx(s);
-	    head = uip->rx_buffer_head;
-	    tail = uip->rx_buffer_tail;
-	    do {
-		n = uip->inst->D;
-		newhead = head + 1;
-		if (newhead >= RX_BUFFER_SIZE) newhead = 0;
-		if (newhead != tail) {
-		    head = newhead;
-		    if (newhead < RX_BUFFER_SIZE) {
-			uip->rx_buffer[head] = n;
-                    } else {
-                        uip->rx_buffer[head - RX_BUFFER_SIZE] = n;
-                    }
-                }
-		/* let's consume the characters as they arrive? no idea how this works */
-		ttyinput(uartgetc(dev), tp);
-            } while (--avail > 0);
-            uip->rx_buffer_head = head;
+            UART0_CFIFO = UART_CFIFO_RXFLUSH;
+            arm_enable_irq(IRQ_UART0_STATUS);
+            arm_enable_irq(IRQ_UART0_ERROR);
+            splx(s);
+        } else {
+            arm_enable_irq(IRQ_UART0_STATUS);
+            arm_enable_irq(IRQ_UART0_ERROR);
+            splx(s);
+
+            n = UART0_D;
+            ttyinput(n, tp);
         }
     }
-    c = uip->inst->C2;
-    /* TDRE = transmit data below watermark */
-    if ((c & UART_C2_TIE) && (uip->inst->S1 & UART_S1_TDRE)) {
-	head = uip->tx_buffer_head;
-	tail = uip->tx_buffer_tail;
-	do {
-	    if (tail == head) break;
-	    if (++tail >= TX_BUFFER_SIZE) tail = 0;
-	    avail = uip->inst->S1;
-            if (tail < TX_BUFFER_SIZE) {
-                n = uip->tx_buffer[tail];
-            } else {
-                n = uip->tx_buffer[tail - TX_BUFFER_SIZE];
-            }
-            uip->inst->D = n;
-        } while (uip->inst->TCFIFO < 8);
-        uip->tx_buffer_tail = tail;
-	
-        if (uip->inst->S1 & UART_S1_TDRE) /* we are soon done */
-            uip->inst->C2 = C2_TX_COMPLETING;
-    }
+    c = UART0_C2;
+    /* TIE = transmitter interrupt, TDRE = transmit data below watermark */
+    if ((c & UART_C2_TIE) && (UART0_S1 & UART_S1_TDRE)) {
+        if (tp->t_outq.c_cc) {
+            tp->t_state &= ~TS_BUSY;
 
-    /* yes, we are done. */
-    if ((c & UART_C2_TCIE) && (uip->inst->S1 & UART_S1_TC)) {
+            do {
+                UART0_D = getc(&tp->t_outq);
+            } while (UART0_TCFIFO < 8);
+        }
+
+        if (UART0_S1 & UART_S1_TDRE)
+            UART0_C2 = C2_TX_COMPLETING;
+        else
+            UART0_C2 = C2_TX_ACTIVE;
+    }
+    /* TC = transmit complete - yes, we are done. */
+    if ((c & UART_C2_TCIE) && (UART0_S1 & UART_S1_TC)) {
         transmitting &= ~(1 << unit);
         /* TODO: check reference */
-        uip->inst->C2 = C2_TX_INACTIVE;
+        UART0_C2 = C2_TX_INACTIVE;
 
-	/* clear busy state as there is nothing left to send. */
-	if (tp->t_state & TS_BUSY) {
-	    tp->t_state &= ~TS_BUSY;
-	    ttstart(tp);
-	}
+        /* clear busy state as there is nothing left to send. */
+        if (tp->t_state & TS_BUSY) {
+            tp->t_state &= ~TS_BUSY;
+            ttstart(tp);
+        }
     }
+    splx(s);
 }
 
 
@@ -351,44 +364,33 @@ void uartstart(struct tty *tp) {
     register int c, s;
 
     if (!tp->t_addr)
-	return;
+        return;
 
     uip = (struct uart_inst *) tp->t_addr;
 
-    /*
-     * Must hold interrupts in following code to prevent
-     * state of the tp from changing.
-     */
     s   = spltty();
     /*
-     * If it is currently active, or delaying, no need to do anything.
+     * let's try again once the terminal is not in this state.
      */
     if (tp->t_state & (TS_TIMEOUT | TS_BUSY | TS_TTSTOP)) {
     out:
-	led_control(LED_TTY, 0);
-	splx(s);
-	return;
+        splx(s);
+        return;
     }
 
-    /*
-     * Wake up any sleepers.
-     */
     ttyowake(tp);
 
-    /*
-     * Now restart transmission unless the output queue is empty.
-     */
     if (tp->t_outq.c_cc == 0)
-	goto out;
+        goto out;
 
     /* is the transmit data register empty? if it is, let's go */
-    if (uip->inst->S1 & UART_S1_TDRE) {
-	c = getc(&tp->t_outq);
-	uartputc(tp->t_dev, c);
-	tp->t_state |= TS_BUSY;
+    if (UART0_S1 & UART_S1_TDRE) {
+        c        = getc(&tp->t_outq);
+        UART0_D  = c;
+        UART0_C2 = C2_TX_ACTIVE;
+        tp->t_state |= TS_BUSY;
     }
 
-    led_control(LED_TTY, 1);
     splx(s);
 }
 
@@ -396,38 +398,26 @@ void uartputc(dev_t dev, char c) {
     int unit                       = minor(dev);
     struct tty *tp                 = &uartttys[unit];
     register struct uart_inst *uip = &uart[unit];
-    u_char n, head;
-    register int s, timo;
+    register int s, try;
 
-    s = spltty();
-    led_control(LED_TTY, 1);
+    s   = spltty();
 
-    head = uip->tx_buffer_head;
+    try = 3;
 
-    if (++head >= TX_BUFFER_SIZE) head = 0;
-    while (uip->tx_buffer_tail == head) {
-	if (uip->inst->S1 & UART_S1_TDRE) {
-	    u_char tail = uip->tx_buffer_tail;
-	    if (++tail >= TX_BUFFER_SIZE) tail = 0;
-	    if (tail < TX_BUFFER_SIZE) {
-		n = uip->tx_buffer[tail];
-	    } else {
-		n = uip->tx_buffer[tail-TX_BUFFER_SIZE];
-	    }
-	    uip->inst->D = n;
-	    uip->tx_buffer_tail = tail;
-	}
+again:
+    if (UART0_TCFIFO < 100)
+        UART0_D = c;
+    else {
+        tp->t_state |= TS_BUSY;
+        uartintr(dev);
     }
-    if (head < TX_BUFFER_SIZE) {
-	uip->tx_buffer[head] = c;
-    } else {
-	uip->tx_buffer[head - TX_BUFFER_SIZE] = c;
-    }
-    transmitting &= (1 << unit);
-    uip->tx_buffer_head = head;
-    uip->inst->C2 = C2_TX_ACTIVE;
 
-    led_control(LED_TTY, 0);
+    if (try && (tp->t_state & TS_BUSY)) {
+        uartintr(dev);
+        try--;
+        goto again;
+    }
+
     splx(s);
 }
 
@@ -436,27 +426,14 @@ char uartgetc(dev_t dev) {
     int unit                       = minor(dev);
     register struct uart_inst *uip = &uart[unit];
     int s, c;
-    u_char head, tail;
 
-    s = spltty();
-    
-    head = uip->rx_buffer_head;
-    tail = uip->rx_buffer_tail;
-
-    if (head == tail) {
-	while (1) {
-	    ; /* TODO: do whatever is supposed to be done */
-	}
+    for (;;) {
+        if (UART0_RCFIFO) {
+            c = UART0_D;
+            break;
+        }
     }
-    if (++tail >= RX_BUFFER_SIZE) tail = 0;
-    if (tail < RX_BUFFER_SIZE) {
-	c = uip->rx_buffer[tail];
-    } else {
-	c = uip->rx_buffer[tail - RX_BUFFER_SIZE];
-    }
-    uip->rx_buffer_tail = tail;
 
-    splx(s);
     return (unsigned char) c;
 }
 
@@ -464,39 +441,34 @@ char uartgetc(dev_t dev) {
  * Test to see if device is present.
  * Return true if found and initialized ok.
  */
-static int
-uartprobe(struct conf_device *config)
-{
-    int unit = config->dev_unit - 1;
-    int is_console = (CONS_MAJOR == UART_MAJOR &&
-		      CONS_MINOR == unit);
+static int uartprobe(struct conf_device *config) {
+    int unit       = config->dev_unit - 1;
+    int is_console = (CONS_MAJOR == UART_MAJOR && CONS_MINOR == unit);
 
     if (unit < 0 || unit >= NUART)
-	return 0;
+        return 0;
 
     switch (unit) {
     case 0:
-	SIM_SCGC4 |= SIM_SCGC4_UART0;
-	break;
+        break;
     default:
-	printf("uart: unit %d not supported\n");
-	return 0;
+        printf("uart: unit %d not supported\n");
+        return 0;
     }
 
     transmitting &= ~(1 << unit);
-    
-    printf("uart%d: rx pin %d, tx pin %d\n",
-	   unit+1,
-	   uart[unit].rx_pin_num, uart[unit].tx_pin_num);
+
+    printf("uart%d: rx pin %d, tx pin %d", unit + 1,
+           uart[unit].rx_pin_num, uart[unit].tx_pin_num);
 
     if (is_console)
-	printf(", console");
+        printf(", console");
     printf("\n");
 
     /* Initialize the device. */
     uartttys[unit].t_addr = (caddr_t) &uart[unit];
-    if (! is_console)
-	uartinit(unit);
+    if (!is_console)
+        uartinit(unit);
 
     return 1;
 }

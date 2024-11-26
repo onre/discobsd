@@ -6,32 +6,12 @@
 
 #ifdef KERNEL
 
-#ifdef TEENSY35
-
 #define NUART   6
 
-#define UART0_ADDR 0x4006A000
-#define UART1_ADDR 0x4006B000
-#define UART2_ADDR 0x4006C000
-#define UART3_ADDR 0x4006D000
-#define UART4_ADDR 0x4006E000
-#define UART5_ADDR 0x4006F000
-
-#define UART1_IRQ
-#define UART2_IRQ
-#define UART3_IRQ
-#define UART4_IRQ
-#define UART5_IRQ
-#define UART6_IRQ
-
-#endif
-
-#ifdef KINETISK
-
-#define C2_ENABLE		UART_C2_TE | UART_C2_RE | UART_C2_RIE | UART_C2_ILIE
-#define C2_TX_ACTIVE		C2_ENABLE | UART_C2_TIE
-#define C2_TX_COMPLETING	C2_ENABLE | UART_C2_TCIE
-#define C2_TX_INACTIVE		C2_ENABLE
+#define C2_ENABLE		(UART_C2_TE | UART_C2_RE | UART_C2_RIE | UART_C2_ILIE)
+#define C2_TX_ACTIVE		(C2_ENABLE | UART_C2_TIE)
+#define C2_TX_COMPLETING	(C2_ENABLE | UART_C2_TCIE)
+#define C2_TX_INACTIVE		(C2_ENABLE)
 
 /* for UART0, UART1 */
 #define BAUD2DIV(baud)  (((F_CPU * 2) + ((baud) >> 1)) / (baud))
@@ -39,7 +19,6 @@
 /* for the rest */
 #define BAUD2DIV_BUS(baud) (((F_BUS * 2) + ((baud) >> 1)) / (baud))
 
-#endif
 
 #define RX_BUFFER_SIZE 64
 #define TX_BUFFER_SIZE 64
