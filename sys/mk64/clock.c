@@ -4,7 +4,7 @@
  * specifies the terms and conditions for redistribution.
  */
 #include <sys/param.h>
-#include <machine/mk64fx512.h>
+#include <machine/systick.h>
 
 /*
  * Setup core timer for `hz' timer interrupts per second.
@@ -12,4 +12,5 @@
 void
 clkstart()
 {
+    systick_init();
 }

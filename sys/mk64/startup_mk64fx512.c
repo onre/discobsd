@@ -34,7 +34,6 @@
 #include <machine/machparam.h>
 #include <machine/mk64fx512.h>
 #include <machine/kinetis.h>
-#include <machine/teensy_usb_dev.h>
 
 // Flash Security Setting. On Teensy 3.2, you can lock the MK20 chip to prevent
 // ( The same applies to the Teensy 3.5 and Teensy 3.6 for their processors )
@@ -558,7 +557,10 @@ void flextimer_init(void) {
 #define UART_POLLING_INTERRUPT
 #ifdef UART_POLLING_INTERRUPT
 	FTM0_CNTIN = 1;
-	FTM0_MOD = 0x4FF; /* adjust this to adjust the firing interval */
+	/* ftminterval */
+	FTM0_MOD = 0x2FFF; /* adjust this to adjust the firing interval.
+	                   * 0xFFF    hm... 1 Hz < this < 10 Hz
+			   */
 	FTM0_SC = FTM_SC_TOIE | FTM_SC_CLKS(0b10) | FTM_SC_CPWMS | FTM_SC_PS(0);
 #endif	
 }
@@ -570,7 +572,6 @@ void early_irq_init(void) {
   SYST_RVR = (F_CPU / 1000) - 1;
   SYST_CVR = 0;
   SYST_CSR = SYST_CSR_CLKSOURCE | SYST_CSR_TICKINT | SYST_CSR_ENABLE;
-  arm_set_irq_prio(IRQ_SYSTICK, SPL_CLOCK);
   /* SCB_SHPR3 = 0x20200000;  Systick = priority 32 */
 
   arm_enable_interrupts();
@@ -612,7 +613,7 @@ void ResetHandler(void)
 	memset(&u, 0, 0x800);
 
 	/* turn on double-word stack aligment at first possible moment */
-	SCB_CCR |= SCB_CCR_STKALIGN_MASK;
+	SCB_CCR |= SCB_CCR_STKALIGN_MASK; 
 	/* ... lets get back to that someday */
 	#if 0
 	SCB_CCR &= ~SCB_CCR_STKALIGN_MASK;
@@ -698,8 +699,8 @@ void ResetHandler(void)
 	 * to the lowest level and switch over to the RAM copy of the vector table.
 	 */
 	for (i=0; i < NVIC_NUM_INTERRUPTS + 16; i++) _VectorsRam[i] = _VectorsFlash[i];
-#ifdef SET_DEFAULT_INTERRUPT_PRIORITY
-	for (i=0; i < NVIC_NUM_INTERRUPTS; i++) NVIC_SET_PRIORITY(i, SPL_LEAST);
+#if defined(SET_DEFAULT_INTERRUPT_PRIORITY) || defined (SIMPLE_INTERRUPTS)
+	for (i=0; i < NVIC_NUM_INTERRUPTS; i++) NVIC_SET_PRIORITY(i, SPL_DEFAULT);
 #endif
 	SCB_VTOR = (uint32_t)_VectorsRam;
 
@@ -935,11 +936,8 @@ void ResetHandler(void)
 
 	flextimer_init();
 
-	mdelay(20);
-	usb_init();
-	mdelay(280);
 	
-#if 0 && defined(KINETISK)
+#if defined(KINETISK)
 	// RTC initialization
 	if (RTC_SR & RTC_SR_TIF) {
 		// this code will normally run on a power-up reset
@@ -970,12 +968,12 @@ void ResetHandler(void)
 		*(uint32_t *)0x4003E01C = 0;
 	}
 #endif
+
 	/**
 	 * wait just a bit before jumping in.
 	 *
 	 * (without this you may not get USB)
 	 */
-	mdelay(1000);
 
 	main();
 	__asm__ volatile("cpsid i");
@@ -996,8 +994,23 @@ void ResetHandler(void)
 	__asm__ volatile("ldr lr,=__user_data_start+1");
 	__asm__ volatile("bx lr");
 
-	LED_ON(LED_FAULT);
-	while (1) ;
+	led_init();
+
+	/* fault blinks @~2 Hz, spl counts 0-7 */
+	
+        while (1) {
+	    volatile unsigned int i;
+	    volatile unsigned int j;
+	    for (i=0; i < 0x1fffff; i++)
+		;
+
+	    led_y3bit(j % 8);
+	    
+	    GPIOB_PTOR = (1 << 11);
+
+	    i=0;
+	    j++;
+        };
 }
 
 #endif /* KERNEL */

@@ -51,7 +51,20 @@ static usb_packet_t *rx_packet=NULL;
 static usb_packet_t *tx_packet=NULL;
 static volatile uint8_t tx_noautoflush=0;
 
-#define TRANSMIT_FLUSH_TIMEOUT	10   /* in milliseconds */
+#define TRANSMIT_FLUSH_TIMEOUT	50   /* in milliseconds */
+
+void usb_yield(void) {
+    #if 0
+    SCB_ICSR |= SCB_ICSR_PENDSVSET_MASK;
+
+    led_spl_top();
+    
+    __set_barrier();
+
+    #endif
+    (void) spl0();
+}
+
 
 // get the next character, or -1 if nothing received
 int usb_serial_getchar(void)
@@ -94,10 +107,9 @@ int usb_serial_available(void)
 
     count = usb_rx_byte_count(CDC_RX_ENDPOINT);
     if (rx_packet) count += rx_packet->len - rx_packet->index;
-#if 0
+
     if (count == 0)
-	/* YIELD */;
-#endif
+	usb_yield();
     return count;
 }
 
@@ -120,8 +132,7 @@ int usb_serial_read(void *buffer, uint32_t size)
 		}
 		qty = rx_packet->len - rx_packet->index;
 		if (qty > size) qty = size;
-		bcopy(rx_packet->buf + rx_packet->index, p, qty);
-		/* memcpy(p, rx_packet->buf + rx_packet->index, qty); */
+		memcpy(p, rx_packet->buf + rx_packet->index, qty);
 		p += qty;
 		count += qty;
 		size -= qty;
@@ -152,7 +163,7 @@ void usb_serial_flush_input(void)
 }
 
 // Maximum number of transmit packets to queue so we don't starve other endpoints for memory
-#define TX_PACKET_LIMIT 8
+#define TX_PACKET_LIMIT 32
 
 // When the PC isn't listening, how long do we wait before discarding data?  If this is
 // too short, we risk losing data during the stalls that are common with ordinary desktop
@@ -225,7 +236,7 @@ int usb_serial_write(const void *buffer, uint32_t size)
 					transmit_previous_timeout = 1;
 					return -1;
 				}
-				/* YIELD */
+				usb_yield();
 			}
 		}
 		transmit_previous_timeout = 0;

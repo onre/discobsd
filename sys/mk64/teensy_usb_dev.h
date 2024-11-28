@@ -39,6 +39,7 @@
 
 #include <machine/teensy_usb_desc.h>
 #include <machine/teensy_usb_mem.h>
+
 #if F_CPU >= 20000000 && !defined(USB_DISABLED)
 
 // This header is NOT meant to be included when compiling

@@ -717,10 +717,10 @@ int mk6x_sdio_readData(char *dst) {
 
     if (!(SDHC_PRSSTAT & SDHC_PRSSTAT_RTA)) {
         SDHC_PROCTL &= ~SDHC_PROCTL_SABGREQ;
-        s = arm_disable_interrupts();
+	s = splbio();
         SDHC_PROCTL |= SDHC_PROCTL_CREQ;
         SDHC_PROCTL |= SDHC_PROCTL_SABGREQ;
-        arm_restore_interrupts(s);
+	splx(s);
     }
     if (waitTimeout(isBusyFifoRead)) {
         return sdError(SD_CARD_ERROR_READ_FIFO);

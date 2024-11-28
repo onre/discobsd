@@ -29,7 +29,7 @@ GCCPREFIX!=if [ x"${MACHINE_ARCH}" = x"arm" ] ; then \
 		elif [ x"${_HOST_OSNAME}" = x"FreeBSD" ] ; then \
 			echo "/usr/local/gcc-arm-embedded/bin/arm-none-eabi" ; \
 		elif [ x"${_HOST_OSNAME}" = x"Linux" ] ; then \
-			echo "/usr/bin/arm-none-eabi" ; \
+			echo "/home/esp/.arduino15/packages/teensy/tools/teensy-compile/11.3.1/arm/bin/arm-none-eabi" ; \
 		else \
 			echo "/does/not/exist" ; \
 		fi \
@@ -39,7 +39,7 @@ GCCPREFIX!=if [ x"${MACHINE_ARCH}" = x"arm" ] ; then \
 		elif [ x"${_HOST_OSNAME}" = x"FreeBSD" ] ; then \
 			echo "/usr/local/mips-elf/bin/mips-elf" ; \
 		elif [ x"${_HOST_OSNAME}" = x"Linux" ] ; then \
-			echo "/usr/local/mips-gcc-4.8.1/bin/mips-elf" ; \
+			echo "/opt/cross/mipsel-pic32mx-elf/bin/mipsel-pic32mx-elf" ; \
 		else \
 			echo "/does/not/exist" ; \
 		fi \
@@ -47,12 +47,11 @@ GCCPREFIX!=if [ x"${MACHINE_ARCH}" = x"arm" ] ; then \
 		echo "/does/not/exist" ; \
 	fi
 
-GCCPREFIX=/home/esp/.arduino15/packages/teensy/tools/teensy-compile/11.3.1/arm/bin/arm-none-eabi
 
 CC!=	if [ x"${MACHINE_ARCH}" = x"arm" ] ; then \
 		echo "${GCCPREFIX}-gcc -mcpu=cortex-m4 -mabi=aapcs -mlittle-endian -mthumb -mfloat-abi=soft -nostdinc -I${TOPSRC}/include ${INCLUDES}" ; \
 	elif [ x"${MACHINE_ARCH}" = x"mips" ] ; then \
-		echo "${GCCPREFIX}-gcc -mips32r2 -EL -msoft-float -nostdinc -fshort-double -I${TOPSRC}/include ${INCLUDES}" ; \
+		echo "${GCCPREFIX}-gcc -mips32r2 -EL -msoft-float -nostdinc -I${TOPSRC}/include ${INCLUDES}" ; \
 	else \
 		echo "/does/not/exist" ; \
 	fi

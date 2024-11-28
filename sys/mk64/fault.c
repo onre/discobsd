@@ -27,6 +27,7 @@
 #include <machine/fault.h>
 #include <machine/frame.h>
 #include <machine/intr.h>
+#include <machine/teensy.h>
 
 /*
  * Fault descriptions of Configurable Fault Status Register bits.
@@ -159,11 +160,12 @@ void usage_fault_isr(void) {
 }
 
 void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
+    volatile unsigned i;
     int psig = SIGILL; /* Default signal. */
     time_t syst;
     int bit;
 
-    led_fault_on();
+    led_fault(1);
 
     /* MUST read MMFAR and BFAR registers before reading CFSR. */
     unsigned int mmfar      = SCB_MMFAR; /* MemManage Fault Address */
@@ -183,6 +185,8 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     cnt.v_trap++;
 #endif
 
+    led_y3bit(type>>1); /* hard 0, mm 1, bf 2, uf 4 */
+    
     printf("fault type: 0x%x", type);
     printf("%s\n",
            HARD_FAULT(hfsr, T_HF_FORCED) ? ", fault escalated" : "");
@@ -197,6 +201,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
             case T_MM_MSTKERR:
             case T_MM_MLSPERR:
                 psig = SIGSEGV;
+		led_g4bit(bit);
                 printf("MemManage Fault\n");
                 arm_clear_fault(bit, T_MM);
                 break;
@@ -207,6 +212,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
             case T_BF_STKERR:
             case T_BF_LSPERR:
                 psig = SIGBUS;
+		led_g4bit(bit);
                 printf("BusFault\n");
                 arm_clear_fault(bit, T_BF);
                 break;
@@ -217,6 +223,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
             case T_UF_UNALIGNED:
             case T_UF_DIVBYZERO:
                 psig = SIGILL;
+		led_g4bit(bit >> 1);
                 printf("UsageFault\n");
                 arm_clear_fault(bit, T_UF);
                 break;
@@ -254,7 +261,10 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     printf("fault entry EXC_RETURN value:\n");
     printf(" lr:\t0x%08x\n", fault_lr);
 
-#if 0
+#if 1
+    i = 0;
+
+    GPIOB_PCOR = (1<<11);
     while (1) {
 	// keep polling some communication while in fault
 	// mode, so we don't completely die.
@@ -262,6 +272,11 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
 	if (SIM_SCGC4 & SIM_SCGC4_UART0) uart0_status_isr();
 	if (SIM_SCGC4 & SIM_SCGC4_UART1) uart1_status_isr();
 	if (SIM_SCGC4 & SIM_SCGC4_UART2) uart2_status_isr();
+
+        if (++i > 0xfffff) {
+	    GPIOB_PTOR = (1 << 11);
+	    i = 0;
+        }
     }
 #endif
     

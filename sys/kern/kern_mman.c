@@ -30,7 +30,7 @@ brk()
 
     /* set d to (new - old) */
     d = newsize - u.u_dsize;
-//printf ("brk: new size %u bytes, incremented by %d\n", newsize, d);
+    /* printf ("brk: new size %u bytes, incremented by %d\n", newsize, d); */
     if (d > 0)
         bzero ((void*) (u.u_procp->p_daddr + u.u_dsize), d);
     u.u_dsize = newsize;

@@ -16,10 +16,11 @@
 
 #ifdef KERNEL
 
-#    include <machine/mk64fx512.h>
-#    include <machine/teensy.h>
+#include <machine/mk64fx512.h>
+#include <machine/teensy.h>
+#include <machine/intr.h>
 
-#    ifdef TEENSY35
+#ifdef TEENSY35
 
 /**
  * this is a      ######   #####  #######
@@ -31,16 +32,33 @@
  * connected to   #        #####   #####
  */
 
-void teensy_led_init(void) {
-    PORTC_PCR5 = PORT_PCR_MUX(1) | PORT_PCR_DSE | PORT_PCR_SRE;
-    GPIOC_PDDR |= TEENSY_LED_PIN_MASK;
+/*  RED   YEL   YEL   YEL   GRN   GRN   GRN   GRN
+ *   B     B     B     B     A     A     A     A
+ *  11    10    19    18    16    15    14     5
+ *
+ * 4 bits to greens:
+ *
+ * GPIOA_PCOR = (7 << 14)|(1 << 5);
+ * GPIOA_PSOR = (((num<<1) & 0x7) << 14)|((num & 1) & (1 << 5); 
+ *
+ * 3 bits to yellows:
+ *
+ * GPIOB_PCOR = (3 << 18)|(1 << 10);
+ * GPIOB_PSOR = ((num & 0x4) << 18)|(((num>>2) & 1) & (1 << 10)):
+ *
+ */
+
+void led_g4bit(int val) {
+    GPIOA_PCOR = ((7 << 14) | (1 << 5));
+    GPIOA_PSOR = ((((val >> 1) & 0x7) << 14) | ((val & 1) << 5));
 }
 
-void teensy_led_on(void) { GPIOC_PSOR = TEENSY_LED_PIN_MASK; }
+void led_y3bit(int val) {
+    GPIOB_PCOR = ((3 << 18) | (1 << 10));
+    GPIOB_PSOR = (((val & 0x3) << 18) | (((val >> 2) & 1) << 10));
+}
 
-void teensy_led_off(void) { GPIOC_PCOR = TEENSY_LED_PIN_MASK; }
-
-void ledinit(void) {
+void led_init(void) {
     LED_PIN_INIT(LED0_PORT, LED0_PIN);
     LED_PIN_INIT(LED1_PORT, LED1_PIN);
     LED_PIN_INIT(LED2_PORT, LED2_PIN);
@@ -50,12 +68,53 @@ void ledinit(void) {
     LED_PIN_INIT(LED6_PORT, LED6_PIN);
     LED_PIN_INIT(LED7_PORT, LED7_PIN);
     LED_PIN_INIT(LED8_PORT, LED8_PIN);
-
-    LED_ON(LED_FAULT);
-    mdelay(50);
-    LED_OFF(LED_FAULT);
 }
 
-#    endif /* TEENSY35 */
+void led_test(void) {
+    volatile int j;
+    for (int i = 0; i < 128; i++) {
+        led_g4bit(i & 0xF);
+        led_y3bit((i >> 4) & 0x7);
+
+        for (j = 0; j < 0x8ffff; j++)
+            ;
+    }
+}
+
+void led_fault(int num) {
+    if (num)
+        LED_ON(LED_FAULT);
+    else
+        LED_OFF(LED_FAULT);
+}
+
+void led_intr(int num) {
+    if (num)
+        LED_ON(LED_INTR);
+    else
+        LED_OFF(LED_INTR);
+}
+
+void ftm0_isr(void) {
+    volatile static unsigned int n;
+    int s;
+
+    s = splbio();
+
+    FTM0_SC &= ~FTM_SC_TOF;
+    FTM0_CNT = 0;
+
+    n++;
+
+    if (n % 3)
+        GPIOB_PCOR = (1 << 11);
+    else
+        GPIOB_PSOR = (1 << 11);
+
+    splx(s);
+}
+
+
+#endif /* TEENSY35 */
 
 #endif /* KERNEL */

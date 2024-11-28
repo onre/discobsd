@@ -1,6 +1,159 @@
-/*
- * UART driver for Kinesis K / Teensy
+/** UART driver for Kinesis K / Teensy.
  *
+ ** S1 - status register 1
+ *
+ * UART_S1_TDRE            0x80                Transmit Data Register Empty Flag
+ * UART_S1_TC              0x40                Transmit Complete Flag
+ * UART_S1_RDRF            0x20                Receive Data Register Full Flag
+ * UART_S1_IDLE            0x10                Idle Line Flag
+ * UART_S1_OR              0x08                Receiver Overrun Flag
+ * UART_S1_NF              0x04                Noise Flag
+ * UART_S1_FE              0x02                Framing Error Flag
+ * UART_S1_PF              0x01                Parity Error Flag
+ *
+ *
+ ** S2 - status register 2
+ *
+ * UART_S2_LBKDIF          0x80                LIN Break Detect Interrupt Flag
+ * UART_S2_RXEDGIF         0x40                RxD Pin Active Edge Interrupt Flag
+ * UART_S2_MSBF            0x20                Most Significant Bit First
+ * UART_S2_RXINV           0x10                Receive Data Inversion
+ * UART_S2_RWUID           0x08                Receive Wakeup Idle Detect
+ * UART_S2_BRK13           0x04                Break Transmit Character Length
+ * UART_S2_LBKDE           0x02                LIN Break Detection Enable
+ * UART_S2_RAF             0x01                Receiver Active Flag
+ *
+ *
+ ** C1 - control register 1
+ *
+ * UART_C1_LOOPS           0x80                Enable loopback
+ * UART_C1_UARTSWAI        0x40                UART Stops in Wait Mode
+ * UART_C1_RSRC            0x20                When LOOPS is set, the RSRC field determines
+ *                                             the source for the receiver shift register input
+ * UART_C1_M               0x10                9-bit or 8-bit Mode Select
+ * UART_C1_WAKE            0x08                Determines which condition wakes the UART
+ * UART_C1_ILT             0x04                Idle Line Type Select
+ * UART_C1_PE              0x02                Parity Enable
+ * UART_C1_PT              0x01                Parity Type, 0=even, 1=odd
+ *
+ ** C2 - control register 2
+ *
+ *
+ * UART_C2_TIE             0x80                Transmitter Interrupt or DMA Transfer Enable.
+ * UART_C2_TCIE            0x40                Transmission Complete Interrupt Enable
+ * UART_C2_RIE             0x20                Receiver Full Interrupt or DMA Transfer Enable
+ * UART_C2_ILIE            0x10                Idle Line Interrupt Enable
+ * UART_C2_TE              0x08                Transmitter Enable
+ * UART_C2_RE              0x04                Receiver Enable
+ * UART_C2_RWU             0x02                Receiver Wakeup Control
+ * UART_C2_SBK             0x01                Send Break
+ *
+ *
+ ** C3 - control register 3
+ *
+ * UART_C3_R8              0x80                Received Bit 8
+ * UART_C3_T8              0x40                Transmit Bit 8
+ * UART_C3_TXDIR           0x20                TX Pin Direction in Single-Wire mode
+ * UART_C3_TXINV           0x10                Transmit Data Inversion
+ * UART_C3_ORIE            0x08                Overrun Error Interrupt Enable
+ * UART_C3_NEIE            0x04                Noise Error Interrupt Enable
+ * UART_C3_FEIE            0x02                Framing Error Interrupt Enable
+ * UART_C3_PEIE            0x01                Parity Error Interrupt Enable
+ *
+ *
+ ** D - data registers, read/write aliased behind the same address
+ *
+ *
+ ** PFIFO - FIFO parameter register
+ * 
+ * UART_PFIFO_TXFE         0x80                Transmit FIFO Enable
+ * UART_PFIFO_TXFIFOSIZE(n) (((n) & 7) << 4)   Transmit FIFO Size - if !0, sz = n<<2
+ *                                             0=1, 1=4, 2=8, 3=16, 4=32, 5=64, 6=128
+ * UART_PFIFO_RXFE         0x08                Receive FIFO Enable
+ * UART_PFIFO_RXFIFOSIZE(n) (((n) & 7) << 0)   Receive FIFO Size
+ *
+ *
+ ** CFIFO - FIFO control register
+ *
+ * UART_CFIFO_TXFLUSH      0x80                 Transmit FIFO/Buffer Flush
+ * UART_CFIFO_RXFLUSH      0x40                 Receive FIFO/Buffer Flush
+ * UART_CFIFO_RXOFE        0x04                 Receive FIFO Overflow Interrupt Enable
+ * UART_CFIFO_TXOFE        0x02                 Transmit FIFO Overflow Interrupt Enable
+ * UART_CFIFO_RXUFE        0x01                 Receive FIFO Underflow Interrupt Enable
+ *
+ *
+ ** SFIFO - FIFO status register
+ *
+ * UART_SFIFO_TXEMPT       0x80                 Transmit Buffer/FIFO Empty
+ * UART_SFIFO_RXEMPT       0x40                 Receive Buffer/FIFO Empty
+ * UART_SFIFO_RXOF         0x04                 Receiver Buffer Overflow Flag
+ * UART_SFIFO_TXOF         0x02                 Transmitter Buffer Overflow Flag
+ * UART_SFIFO_RXUF         0x01                 Receiver Buffer Underflow Flag
+ *
+ *
+ ** TWFIFO - transmit FIFO watermark
+ ** TCFIFO - transmit FIFO count
+ ** RWFIFO - receive FIFO watermark
+ ** RCFIFO - receive FIFO count
+ *
+ * K64 Sub-Family Reference Manual, Rev. 2, January 2014, pages 1609-1610
+ * 52.8.3 Initialization sequence (non ISO-7816)
+ *
+ * To initiate a UART transmission:
+ *
+ * 1. Configure the UART.
+ *
+ *  a. Select a baud rate. Write this value to the UART baud registers (BDH/L) to
+ *     begin the baud rate generator. Remember that the baud rate generator is disabled
+ *     when the baud rate is zero. Writing to the BDH has no effect without also
+ *     writing to BDL.
+ *
+ *  b. Write to C1 to configure word length, parity, and other configuration bits
+ *     (LOOPS, RSRC, M, WAKE, ILT, PE, and PT). Write to C4, MA1, and MA2 to
+ *     configure.
+ * 
+ *  c. Enable the transmitter, interrupts, receiver, and wakeup as required, by writing to
+ *     C2 (TIE, TCIE, RIE, ILIE, TE, RE, RWU, and SBK), S2 (MSBF and BRK13),
+ *     and C3 (ORIE, NEIE, PEIE, and FEIE). A preamble or idle character is then
+ *     shifted out of the transmitter shift register.
+ * 
+ * 2. Transmit procedure for each byte.
+ *
+ *  a. Monitor S1[TDRE] by reading S1 or responding to the TDRE interrupt. The
+ *     amount of free space in the transmit buffer directly using TCFIFO[TXCOUNT]
+ *     can also be monitored.
+ * 
+ *  b. If the TDRE flag is set, or there is space in the transmit buffer, write the data to
+ *     be transmitted to (C3[T8]/D). A new transmission will not result until data exists
+ *     in the transmit buffer.
+ *
+ *  3. Repeat step 2 for each subsequent transmission.
+ * 
+ *      Note
+ * 
+ *       During normal operation, S1[TDRE] is set when the shift
+ *       register is loaded with the next data to be transmitted from the
+ *       transmit buffer and the number of datawords contained in the
+ *       transmit buffer is less than or equal to the value in
+ *       TWFIFO[TXWATER]. This occurs 9/16ths of a bit time after
+ *       the start of the stop bit of the previous frame.
+ *
+ *  To separate messages with preambles with minimum idle line time, use this sequence
+ * between messages.
+ *
+ *  1. Write the last dataword of the first message to C3[T8]/D.
+ *
+ *  2. Wait for S1[TDRE] to go high with TWFIFO[TXWATER] = 0, indicating the
+ *  transfer of the last frame to the transmit shift register.
+ *
+ *  3. Queue a preamble by clearing and then setting C2[TE].
+ *
+ *  4. Write the first and subsequent datawords of the second message to C3[T8]/D.
+ *
+ *
+ */
+
+/*
  * Copyright (c) 1986 Regents of the University of California.
  * All rights reserved.  The Berkeley software License Agreement
  * specifies the terms and conditions for redistribution.
@@ -19,6 +172,7 @@
 #include <machine/uart.h>
 #include <machine/kinetis.h>
 #include <machine/intr.h>
+#include <machine/teensy.h>
 
 #define CONCAT(x, y) x##y
 #define BBAUD(x)     CONCAT(B, x)
@@ -31,64 +185,44 @@ struct uart_inst {
     volatile KINETISK_UART_t *regs;
     u_char rx_pin_num;
     u_char tx_pin_num;
-    volatile u_int *regbase; /* 00 pdor - can be 20, 40, 80, ...
-			      * 04 psor
-			       * 08 pcor
-			       * 0C ptor
-			       * 10 pdir
-			       * 14 pddr
-			       */
-    volatile u_char rx_buffer[RX_BUFFER_SIZE];
-    volatile u_char tx_buffer[TX_BUFFER_SIZE];
-    volatile u_char rx_buffer_head;
-    volatile u_char rx_buffer_tail;
-    volatile u_char tx_buffer_head;
-    volatile u_char tx_buffer_tail;
 };
 
 static struct uart_inst uart[NUART] = {
 #ifdef TEENSY35
-    {&KINETISK_UART0, 16, 17, &GPIOB_PDOR},
-#if 0
-    {&(*(KINETISK_UART_t *) UART1_ADDR)},
-    {&(*(KINETISK_UART_t *) UART2_ADDR)},
-    {&(*(KINETISK_UART_t *) UART3_ADDR)},
-    {&(*(KINETISK_UART_t *) UART4_ADDR)},
-    {&(*(KINETISK_UART_t *) UART5_ADDR)}
-#else
-    {},
-    {},
-    {},
-    {},
-    {}
-#endif
-
+    {&KINETISK_UART0, 16, 17},
 #endif
 };
 
 struct tty uartttys[NUART];
 
+static unsigned speed_bps [NSPEEDS] = {
+    0,       50,      75,      150,     200,    300,     600,     1200,
+    1800,    2400,    4800,    9600,    19200,  38400,   57600,   115200,
+    230400,  460800,  500000,  576000,  921600, 1000000, 1152000, 1500000,
+    2000000, 2500000, 3000000, 3500000, 4000000
+};
 /*
  * as NUART is at most less than 8,
- * we can get away with this. 
+ * we can get away with these for now.
  */
-static volatile uint8_t transmitting;
 static volatile uint8_t alive;
 
+void cnstart (struct tty *tp);
+
 void uart0_status_isr(void) {
-    if (alive == 1)
+    if (alive == 1) {
         uartintr(makedev(UART_MAJOR, 0));
+    }
 }
 void uart0_error_isr(void) {
-    if (alive == 1)
+    if (alive == 1) {
         uartintr(makedev(UART_MAJOR, 0));
+    }
 }
 
 void uartinit(int unit) {
-    struct uart_inst *inst;
-    int divisor, c, s;
-
-    s = arm_disable_interrupts();
+    register struct uart_inst *inst;
+    int divisor;
 
     SIM_SCGC4 |= SIM_SCGC4_UART0;
 
@@ -101,52 +235,43 @@ void uartinit(int unit) {
 
     switch (unit) {
     case 0:
-    case 1:
         arm_disable_irq(IRQ_UART0_STATUS);
         arm_disable_irq(IRQ_UART0_ERROR);
 
-        if (unit == 0) {
-            PORTB_PCR16 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
-                          PORT_PCR_MUX(3);
-            PORTB_PCR17 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
-            uart[unit].rx_pin_num = 0;
-            uart[unit].tx_pin_num = 1;
-        } else {
-            PORTB_PCR16 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
-                          PORT_PCR_MUX(3);
-            PORTB_PCR17 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
-            uart[unit].rx_pin_num = 0;
-            uart[unit].tx_pin_num = 1;
-        }
+	PORTB_PCR16 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
+	    PORT_PCR_MUX(3);
+	PORTB_PCR17 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
+	goto uart01_common;
+    case 1:
+        arm_disable_irq(IRQ_UART1_STATUS);
+        arm_disable_irq(IRQ_UART1_ERROR);
 
+
+            PORTC_PCR3 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
+                          PORT_PCR_MUX(3);
+            PORTC_PCR4 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
+
+
+    uart01_common:
+	
         divisor = BAUD2DIV(115200);
 
-        /* fixed 115200 for now */
-        if (divisor < 32)
-            divisor = 32;
+        /* fixed 115200 for now. */
 
-#if 0
-        UART0_BDH    = (divisor >> 13) & 0x1F;
-        UART0_BDL    = (divisor >> 5) & 0xFF;
-        UART0_C4     = divisor & 0x1F;
-#endif
-        UART0_BDH    = 0;
-        UART0_BDL    = 65;
-        UART0_C4     = 0b00011; /* this or 0b00011 */
+        inst->regs->BDH    = 0;
+        inst->regs->BDL    = 65;
+        inst->regs->C4     = 0b00100; /* 0b00100 or 0b00011 */
 
-        UART0_C1     = UART_C1_ILT;
-        UART0_C2     = C2_TX_INACTIVE;
+        inst->regs->C1     = UART_C1_ILT;
+        inst->regs->C2     = C2_TX_INACTIVE;
+	inst->regs->C5     = 0;
 
-        UART0_TWFIFO = 2; // tx watermark, causes S1_TDRE to set
-        UART0_RWFIFO = 4; // rx watermark, causes S1_RDRF to set
+        inst->regs->TWFIFO = 2; // tx watermark, causes S1_TDRE to set
+        inst->regs->RWFIFO = 2; // rx watermark, causes S1_RDRF to set
 
-        UART0_PFIFO  = UART_PFIFO_TXFE | UART_PFIFO_RXFE |
-                      UART_PFIFO_TXFIFOSIZE(6) |
-                      UART_PFIFO_RXFIFOSIZE(6);
-
-        c        = UART0_C1;
-        c        = (c & ~0x13) | (SERIAL_8N1 & 0x03);
-        UART0_C1 = c;
+        inst->regs->PFIFO  = UART_PFIFO_TXFE | UART_PFIFO_RXFE |
+                            UART_PFIFO_TXFIFOSIZE(6) |
+                            UART_PFIFO_RXFIFOSIZE(6);
 
         /*
 	 * deep breath, hope for the best and activate isr
@@ -165,22 +290,17 @@ void uartinit(int unit) {
         printf("uart: wtf\n");
         break;
     }
-
-    arm_restore_interrupts(s);
 }
 
 int uartopen(dev_t dev, int flag, int mode) {
     register struct uart_inst *uip;
     register struct tty *tp;
     register int unit = minor(dev);
-    u_char c;
 
     if (unit < 0 || unit >= NUART)
         return (ENXIO);
 
     tp = &uartttys[unit];
-    if (!tp->t_addr)
-        return (ENXIO);
 
     uip         = (struct uart_inst *) tp->t_addr;
     tp->t_oproc = uartstart;
@@ -210,8 +330,26 @@ int uartclose(dev_t dev, int flag, int mode) {
 
     ttywflush(tp);
     ttyclose(tp);
+
+    
     return (0);
 }
+
+void uartflush(dev_t dev) {
+    register int unit       = minor(dev);
+    register struct tty *tp;
+    register struct uart_inst *uip;
+
+    uip = &uart[unit];
+    tp = &uartttys[unit];
+
+    uip->regs->C2 &= ~(UART_C2_RE | UART_C2_RIE | UART_C2_ILIE);
+    uip->regs->CFIFO = UART_CFIFO_RXFLUSH;
+    uip->regs->C2 |= (UART_C2_RE | UART_C2_RIE | UART_C2_ILIE);
+
+    tp->t_state &= ~TS_BUSY;
+}
+
 /*ARGSUSED*/
 int uartread(dev_t dev, struct uio *uio, int flag) {
     register int unit       = minor(dev);
@@ -259,37 +397,95 @@ int uartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
     return (error);
 }
 
-/* this receives the "status interrupt" which can be:
+/** Kinetis K UART interrupt handler
+ *
+ * this receives the "status interrupt" which can be:
  *
  * UART_S1_TDRE      transmit data below watermark
- * UART_S1_TC        transmit complete
- * UART_S1_IDLE      idle line (what is this?)
- * UART_S1_RDRF      receive data above watermark
- * UART_S2_LBKDIF    LIN break detect (?)
- * UART_S2_RXEDGIF   rx pin active edge
  *
+ * "To clear TDRE, read S1 when TDRE is set and then write to the UART
+ * data register (D). For more efficient interrupt servicing, all data
+ * except the final value to be written to the buffer must be written
+ * to D/C3[T8]. Then S1 can be read before writing the final data
+ * value, resulting in the clearing of the TRDE flag. This is more
+ * efficient because the TDRE reasserts until the watermark has been
+ * exceeded. So, attempting to clear the TDRE with every write will be
+ * ineffective until sufficient data has been written."
+ *
+ * UART_S1_TC        transmit complete
+ *
+ * "TC is cleared by reading S1 with TC set and then doing one of
+ * the following: 
+ *
+ * • Writing to D to transmit new data.
+ * • Queuing a preamble by clearing and then setting C2[TE].
+ * • Queuing a break character by writing 1 to SBK in C2.
+ *
+ * UART_S1_IDLE      idle line 
+ *
+ * "After the IDLE flag is cleared, a frame must be received (although
+ * not necessarily stored in the data buffer, for example if C2[RWU]
+ * is set), or a LIN break character must set the S2[LBKDIF] flag
+ * before an idle condition can set the IDLE flag. To clear IDLE, read
+ * UART status S1 with IDLE set and then read D.  IDLE is set when
+ * either of the following appear on the receiver input:
+ *
+ * • 10 consecutive logic 1s if C1[M] = 0
+ * • 11 consecutive logic 1s if C1[M] = 1 and C4[M10] = 0
+ * • 12 consecutive logic 1s if C1[M] = 1, C4[M10] = 1, and C1[PE] = 1"
+ *
+ * UART_S1_RDRF      receive data above watermark
+ *
+ * "To clear RDRF, read S1 when RDRF is set and then read D. For more
+ * efficient interrupt and DMA operation, read all data except the
+ * final value from the buffer, using D/C3[T8]/ED. Then read S1 and
+ * the final data value, resulting in the clearing of the RDRF
+ * flag. Even if RDRF is set, data will continue to be received until
+ * an overrun condition occurs.RDRF is prevented from setting while
+ * S2[LBKDE] is set.  Additionally, when S2[LBKDE] is set, the
+ * received datawords are stored in the receive buffer but over-write
+ * each other."
+ *
+ * UART_S1_TIE       transmitter interrupt
+ *
+ * 
+ *
+ **
+ * the C2-related macros are borrowed from Teensyduino. they enable
+ * different interrupts and features as follows:
+ *
+ * C2_ENABLE         enable transmitter & receiver,
+ *                   RIE (receiver full) interrupt and ILIE (idle line) interrupt
+ *
+ * C2_TX_ACTIVE      C2_ENABLE and TIE (transmitter) interrupt
+ *                   set by tx fifo level going over the watermark
+ *
+ * C2_TX_COMPLETING  C2_ENABLE and TCIE (transmission complete) interrupt
+ *                   set by tx fifo level going under the watermark
+ *
+ * C2_TX_INACTIVE    same as C2_ENABLE
+ *
+ *
+ * 
  */
 void uartintr(dev_t dev) {
     register int c, s;
     register int unit       = minor(dev);
     register struct tty *tp = &uartttys[unit];
     register struct uart_inst *uip;
-    u_char head, tail, n, newhead, avail;
-
-    if (!tp->t_addr)
-        return;
-
-    uip = (struct uart_inst *) tp->t_addr;
+    u_char n, avail;
 
     s   = spltty();
 
+    uip = (struct uart_inst *) &uart[unit];
+
     /* receive data above watermark OR idle line */
-    if (UART0_S1 & (UART_S1_RDRF | UART_S1_IDLE)) {
+    if (uip->regs->S1 & (UART_S1_RDRF | UART_S1_IDLE)) {
         /* disable irqs to avoid ending up back here with the underrun error  */
         arm_disable_irq(IRQ_UART0_STATUS);
         arm_disable_irq(IRQ_UART0_ERROR);
 
-        avail = UART0_RCFIFO;
+        avail = uip->regs->RCFIFO;
         /* next two comment blocks verbatim from original source */
 
         if (avail == 0) {
@@ -300,7 +496,7 @@ void uartintr(dev_t dev) {
 	     * Freescale reads this, what a poor design!  There
 	     * write should be a write-1-to-clear for IDLE.
 	     */
-            c           = UART0_D;
+            c           = uip->regs->D;
             /* flushing the fifo recovers from the underrun,
 	     * but there's a possible race condition where a
 	     * new character could be received between reading
@@ -312,59 +508,56 @@ void uartintr(dev_t dev) {
 	     * which transmit interrupts are enabled.
 	     */
             UART0_CFIFO = UART_CFIFO_RXFLUSH;
+	    
             arm_enable_irq(IRQ_UART0_STATUS);
             arm_enable_irq(IRQ_UART0_ERROR);
-            splx(s);
         } else {
             arm_enable_irq(IRQ_UART0_STATUS);
             arm_enable_irq(IRQ_UART0_ERROR);
-            splx(s);
 
-            n = UART0_D;
-            ttyinput(n, tp);
+	    do {
+		n = uip->regs->D;
+		ttyinput(n, tp);
+	    } while (--avail > 0);
+	    
         }
     }
-    c = UART0_C2;
+    c = uip->regs->C2;
+
     /* TIE = transmitter interrupt, TDRE = transmit data below watermark */
-    if ((c & UART_C2_TIE) && (UART0_S1 & UART_S1_TDRE)) {
+    if ((c & UART_C2_TIE) && (uip->regs->S1 & UART_S1_TDRE)) {
+	avail = uip->regs->S1; /* value not used, part of interrupt clearing dance */
         if (tp->t_outq.c_cc) {
-            tp->t_state &= ~TS_BUSY;
-
             do {
-                UART0_D = getc(&tp->t_outq);
-            } while (UART0_TCFIFO < 8);
+                uip->regs->D = getc(&tp->t_outq);
+            } while (uip->regs->TCFIFO < 128);
         }
+	/* interrupt clearing dance does not seem to happen if there's nothing to send,
+	 * but that's okay as we will stop listening to the interrupt anyway.
+	 */
 
-        if (UART0_S1 & UART_S1_TDRE)
-            UART0_C2 = C2_TX_COMPLETING;
-        else
-            UART0_C2 = C2_TX_ACTIVE;
+        if (uip->regs->S1 & UART_S1_TDRE)
+            uip->regs->C2 = C2_TX_COMPLETING; /* ignore TIE, wait for TCIE */
     }
-    /* TC = transmit complete - yes, we are done. */
-    if ((c & UART_C2_TCIE) && (UART0_S1 & UART_S1_TC)) {
-        transmitting &= ~(1 << unit);
-        /* TODO: check reference */
-        UART0_C2 = C2_TX_INACTIVE;
+    
+    /* TC = transmit complete interrupt */
+    if ((c & UART_C2_TCIE) && (uip->regs->S1 & UART_S1_TC)) {
+	/* turn the thing off, then! */
+        uip->regs->C2 = C2_TX_INACTIVE;
 
-        /* clear busy state as there is nothing left to send. */
         if (tp->t_state & TS_BUSY) {
             tp->t_state &= ~TS_BUSY;
-            ttstart(tp);
         }
+	ttstart(tp);
     }
+
     splx(s);
 }
 
 
-/*
- * Start (restart) transmission on the given line.
- */
 void uartstart(struct tty *tp) {
     register struct uart_inst *uip;
     register int c, s;
-
-    if (!tp->t_addr)
-        return;
 
     uip = (struct uart_inst *) tp->t_addr;
 
@@ -383,13 +576,13 @@ void uartstart(struct tty *tp) {
     if (tp->t_outq.c_cc == 0)
         goto out;
 
-    /* is the transmit data register empty? if it is, let's go */
-    if (UART0_S1 & UART_S1_TDRE) {
-        c        = getc(&tp->t_outq);
-        UART0_D  = c;
-        UART0_C2 = C2_TX_ACTIVE;
-        tp->t_state |= TS_BUSY;
-    }
+    /* ask less, do more */
+    do {
+	c             = getc(&tp->t_outq);
+	uip->regs->D  = c;
+    } while(tp->t_outq.c_cc && (uip->regs->TCFIFO < 128));
+    tp->t_state |= TS_BUSY;
+    uip->regs->C2 = C2_TX_ACTIVE;
 
     splx(s);
 }
@@ -398,25 +591,24 @@ void uartputc(dev_t dev, char c) {
     int unit                       = minor(dev);
     struct tty *tp                 = &uartttys[unit];
     register struct uart_inst *uip = &uart[unit];
-    register int s, try;
+    register int s, timo;
 
     s   = spltty();
+ again:
+    timo = 3000;
 
-    try = 3;
+    while (tp->t_state & TS_BUSY)
+	if (--timo == 0)
+	    break;
 
-again:
-    if (UART0_TCFIFO < 100)
-        UART0_D = c;
-    else {
-        tp->t_state |= TS_BUSY;
-        uartintr(dev);
-    }
-
-    if (try && (tp->t_state & TS_BUSY)) {
-        uartintr(dev);
-        try--;
+    if (tp->t_state & TS_BUSY) {
+	uartflush(dev);
         goto again;
     }
+
+    uip->regs->D = c;
+    tp->t_state |= TS_BUSY;
+    uip->regs->C2 = C2_TX_ACTIVE;
 
     splx(s);
 }
@@ -427,13 +619,18 @@ char uartgetc(dev_t dev) {
     register struct uart_inst *uip = &uart[unit];
     int s, c;
 
+    s = spltty();
+
     for (;;) {
-        if (UART0_RCFIFO) {
-            c = UART0_D;
+        if (uip->regs->RCFIFO) {
+            c = uip->regs->D;
             break;
         }
+	uartintr(dev);
     }
 
+    splx(s);
+    
     return (unsigned char) c;
 }
 
@@ -456,10 +653,7 @@ static int uartprobe(struct conf_device *config) {
         return 0;
     }
 
-    transmitting &= ~(1 << unit);
-
-    printf("uart%d: rx pin %d, tx pin %d", unit + 1,
-           uart[unit].rx_pin_num, uart[unit].tx_pin_num);
+    printf("uart%d: found", unit + 1);
 
     if (is_console)
         printf(", console");
@@ -469,7 +663,6 @@ static int uartprobe(struct conf_device *config) {
     uartttys[unit].t_addr = (caddr_t) &uart[unit];
     if (!is_console)
         uartinit(unit);
-
     return 1;
 }
 

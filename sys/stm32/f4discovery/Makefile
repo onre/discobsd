@@ -23,6 +23,7 @@ PARAM += -DHALTREBOOT
 PARAM += -DBUS_KHZ=48000
 PARAM += -DCPU_KHZ=168000
 LDSCRIPT = "f4discovery/STM32F407XG.ld"
+DEBUG = -g
 #
 # Makefile for DiscoBSD, stm32 target
 #

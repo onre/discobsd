@@ -53,7 +53,6 @@
 #include <machine/teensy_usb_mem.h>
 #include <machine/teensy_usb_serial.h>
 
-
 #if F_CPU >= 20000000 && defined(NUM_ENDPOINTS)
 
 
@@ -66,8 +65,6 @@
 #pragma GCC optimize ("O3")
 #endif
 #endif
-
-volatile static int usb_use_spl;
 
 static void (*usb_serial_callback)(dev_t dev);
 
@@ -169,6 +166,25 @@ volatile uint8_t usb_reboot_timer = 0;
 void usb_serial_set_callback(void (*callback)(dev_t dev)) {
 	usb_serial_callback = callback;
 }
+
+#ifdef CDC_DATA_INTERFACE
+
+void ftm0_isr(void) {
+    int s;
+
+    s = splusb();
+    FTM0_SC &= ~FTM_SC_TOF;
+    FTM0_CNT = 0;
+    splx(s);
+    
+    if (usb_serial_callback && usb_serial_available()) {
+            usb_serial_callback(makedev(UARTUSB_MAJOR, 0));
+    }
+    spl0();
+}
+
+#endif
+
 
 
 static void endpoint0_stall(void)
@@ -665,13 +681,13 @@ usb_packet_t *usb_rx(uint32_t endpoint)
 	int s;
 	endpoint--;
 	if (endpoint >= NUM_ENDPOINTS) return NULL;
-	s = arm_disable_interrupts();
+	s = splusb();
 	ret = rx_first[endpoint];
 	if (ret) {
 		rx_first[endpoint] = ret->next;
 		usb_rx_byte_count_data[endpoint] -= ret->len;
 	}
-	arm_restore_interrupts(s);
+	splx(s);
 	return ret;
 }
 
@@ -680,11 +696,11 @@ static uint32_t usb_queue_byte_count(const usb_packet_t *p)
 	uint32_t count=0;
 	int s;
 
-	s = arm_disable_interrupts();
+	s = splusb();
 	for ( ; p; p = p->next) {
 		count += p->len;
 	}
-	arm_enable_interrupts(s);
+	splx(s);
 	return count;
 }
 
@@ -717,9 +733,9 @@ uint32_t usb_tx_packet_count(uint32_t endpoint)
 
 	endpoint--;
 	if (endpoint >= NUM_ENDPOINTS) return 0;
-	s = arm_disable_interrupts();
+	s = splusb();
 	for (p = tx_first[endpoint]; p; p = p->next) count++;
-	arm_restore_interrupts(s);
+	splx(s);
 	return count;
 }
 
@@ -739,7 +755,7 @@ void usb_rx_memory(usb_packet_t *packet)
 	int s;
 
 	cfg = usb_endpoint_config_table;
-	s = arm_disable_interrupts();
+	s = splusb();
 	for (i=1; i <= NUM_ENDPOINTS; i++) {
 #ifdef AUDIO_INTERFACE
 		if (i == AUDIO_RX_ENDPOINT) continue;
@@ -749,19 +765,19 @@ void usb_rx_memory(usb_packet_t *packet)
 				table[index(i, RX, EVEN)].addr = packet->buf;
 				table[index(i, RX, EVEN)].desc = BDT_DESC(64, 0);
 				usb_rx_memory_needed--;
-				arm_enable_interrupts();
+				splx(s);
 				return;
 			}
 			if (table[index(i, RX, ODD)].desc == 0) {
 				table[index(i, RX, ODD)].addr = packet->buf;
 				table[index(i, RX, ODD)].desc = BDT_DESC(64, 1);
 				usb_rx_memory_needed--;
-				arm_enable_interrupts();
+				splx(s);
 				return;
 			}
 		}
 	}
-	arm_restore_interrupts(s);
+	splx(s);
 	// we should never reach this point.  If we get here, it means
 	// usb_rx_memory_needed was set greater than zero, but no memory
 	// was actually needed.
@@ -781,7 +797,7 @@ void usb_tx(uint32_t endpoint, usb_packet_t *packet)
 
 	endpoint--;
 	if (endpoint >= NUM_ENDPOINTS) return;
-	s = arm_disable_interrupts();
+	s = splusb();
 	switch (tx_state[endpoint]) {
 	  case TX_STATE_BOTH_FREE_EVEN_FIRST:
 		next = TX_STATE_ODD_FREE;
@@ -821,7 +837,7 @@ void usb_tx_isochronous(uint32_t endpoint, void *data, uint32_t len)
 
 	endpoint--;
 	if (endpoint >= NUM_ENDPOINTS) return;
-	s = arm_disable_interrupts();
+	s = splusb();
 	state = tx_state[endpoint];
 	if (state == 0) {
 		next = 1;
@@ -832,7 +848,7 @@ void usb_tx_isochronous(uint32_t endpoint, void *data, uint32_t len)
 	tx_state[endpoint] = next;
 	b->addr = data;
 	b->desc = (len << 16) | BDT_OWN;
-	arm_restore_interrupts(s);
+	splx(s);
 }
 
 
@@ -845,20 +861,12 @@ void _reboot_Teensyduino_(void)
 	__builtin_unreachable();
 }
 
-void usb_enable_spl(void) {
-    usb_use_spl = 1;
-}
-
 void usb_isr(void)
 {
 	uint8_t status, stat, t;
 	int s;
 
-        if (usb_use_spl) {
-		s = spltty();
-        } else {
-		s = -1;
-        }
+	s = splusb();
 
 	restart:
 	status = USB0_ISTAT;
@@ -1074,19 +1082,13 @@ void usb_isr(void)
 		USB0_ISTAT = USB_ISTAT_SLEEP;
 	}
 
-#ifdef CDC_DATA_INTERFACE
-#if 0
-        if (usb_serial_callback && usb_serial_available()) {
-		usb_serial_callback(makedev(UARTUSB_MAJOR, 0));
-        }
-#endif
-#endif
-
-
  end:
 	if (s != -1) {
 		splx(s);
         }
+
+	
+
 }
 
 

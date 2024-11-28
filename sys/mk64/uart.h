@@ -6,12 +6,13 @@
 
 #ifdef KERNEL
 
-#define NUART   6
+#define NUART   1
 
-#define C2_ENABLE		(UART_C2_TE | UART_C2_RE | UART_C2_RIE | UART_C2_ILIE)
-#define C2_TX_ACTIVE		(C2_ENABLE | UART_C2_TIE)
-#define C2_TX_COMPLETING	(C2_ENABLE | UART_C2_TCIE)
-#define C2_TX_INACTIVE		(C2_ENABLE)
+#define C2_ENABLE		UART_C2_TE | UART_C2_RE | UART_C2_RIE | UART_C2_ILIE
+
+#define C2_TX_ACTIVE		C2_ENABLE | UART_C2_TIE
+#define C2_TX_COMPLETING	C2_ENABLE | UART_C2_TCIE
+#define C2_TX_INACTIVE		C2_ENABLE
 
 /* for UART0, UART1 */
 #define BAUD2DIV(baud)  (((F_CPU * 2) + ((baud) >> 1)) / (baud))

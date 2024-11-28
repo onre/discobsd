@@ -7,5 +7,9 @@ compile_commands.json
 *.a
 *.elf
 unix
-unix.map
-unix.dis
+unix.*
+log/
+.ccls*
+.clang*
+sys/*/*/vers.c
+sys/*/*/Makefile

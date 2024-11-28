@@ -32,7 +32,7 @@
 
 #    include <machine/mk64fx512.h>
 
-void mpuinit(void) {
+void mpu_init(void) {
     /**
      *
      * TODO: take full advantage of the MPU.

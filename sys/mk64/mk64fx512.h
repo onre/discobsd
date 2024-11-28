@@ -53,6 +53,14 @@ get_basepri(void) {
 }
 #endif
 
+#define MEM_MANAGE_HANDLER 4
+#define BUS_FAULT_HANDLER 5
+#define USAGE_FAULT_HANDLER 6
+#define SVCALL_HANDLER 11
+#define DEBUG_MONITOR_HANDLER 12
+#define PENDSV_HANDLER 14
+#define SYSTICK_HANDLER 15
+
 static __inline unsigned int get_basepri(void) {
     return !!nvic_execution_priority();
 }
@@ -91,15 +99,10 @@ static __inline void wfi(void) {
 #define SCB_ICSR_PENDSVSET_MASK ((unsigned int) 1 << 28)
 #define SCB_CCR_STKALIGN_MASK ((unsigned int) 1 << 9)
 
-#define SVCALL_IRQ 11
-#define PENDSV_IRQ 14
-#define SYSTICK_IRQ 15
-#define IRQ_SYSTICK 15 /* d'oh */
-
 int nvic_execution_priority(void);
 unsigned long rtc_get(void);
 void rtc_set(unsigned long);
-void mpuinit(void);
+void mpu_init(void);
 
 #define __NVIC_PRIO_BITS 4
 

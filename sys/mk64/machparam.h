@@ -22,6 +22,35 @@
 #endif
 #endif
 
+/*
+ * SIMPLE_INTERRUPTS - preset all interrupts to equal priority in startup code and then
+ * make sure none of the kernel code changes any of those priorities.
+ *
+ * TODO: implement.
+ */
+
+#ifdef SIMPLE_INTERRUPTS
+
+#define SPL_DEFAULT 128
+
+#define SPL_LEAST     SPL_DEFAULT
+#define SPL_SOFTCLOCK SPL_DEFAULT
+#define SPL_NET       SPL_DEFAULT
+#define SPL_TTY       SPL_DEFAULT
+#define SPL_BIO       SPL_DEFAULT
+#define SPL_CLOCK     SPL_DEFAULT
+#define SPL_HIGH      SPL_DEFAULT
+#define SPL_TOP       SPL_DEFAULT
+
+#else
+
+#define HARDMODE
+
+#define SET_DEFAULT_INTERRUPT_PRIORITY
+#define SPL_DEFAULT SPL_LEAST
+
+#endif
+
 
 #ifndef ENDIAN
 

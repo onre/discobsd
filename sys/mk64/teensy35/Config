@@ -23,9 +23,10 @@ options         "CPU_KHZ=120000"            # Oscillator frequency of CPU core
 options         "BUS_KHZ=60000"             # Frequency of peripheral bus
 options		"F_CPU=120000000UL"
 options		"F_BUS=60000000UL"
-options		"GLOBAL_DEBUG"
+#options		"GLOBAL_DEBUG"
 #options		"SIMPLE_INTERRUPTS"
-options		"USB_SERIAL"
+#options		"USB_SERIAL"
+options	        "USB_DISABLED=1"
 options		"NMOUNT=4"
 # options         "HALTREBOOT"                # If halted, press key to reboot
 
@@ -35,8 +36,8 @@ config          unix    root on sd0a
 
 # Serial UART ports
 
-device           uartusb1                    # Teensy virtual USB UART
-#device           uart1                       # rx pin 0, tx pin 1
+#device           uartusb1                    # Teensy virtual USB UART
+device           uart1                       # rx pin 0, tx pin 1
 #device          uart2                       # USART2 as console
 #device          uart3                       # USART3
 #device          uart4                       # UART4
@@ -44,8 +45,8 @@ device           uartusb1                    # Teensy virtual USB UART
 #device          uart6                       # USART6
 options         "UART_BAUD=115200"          # default speed
 
-options         "CONS_MAJOR=UARTUSB_MAJOR"   # USB UART device
-options         "CONS_MINOR=0"               # posing as uart0
+options         "CONS_MAJOR=UART_MAJOR"   # USB UART device
+options         "CONS_MINOR=0"
 
 controller      sdio0
 # MicroSD card

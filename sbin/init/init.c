@@ -512,7 +512,7 @@ main(argc, argv)
 	int argc;
 	char **argv;
 {
-#if 0
+#if 1
         /* Trivial init: just start shell. */
         int fd = open(ctty, O_RDWR, 0);
         if (fd < 0)

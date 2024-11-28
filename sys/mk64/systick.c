@@ -25,12 +25,45 @@
 #include <machine/frame.h>
 #include <machine/uart.h>
 
-unsigned int systick_ms;
+volatile u_long systick_ms = 0;
+
+static int systick_enabled;
+
+void systick_init() {
+    systick_enabled = 1;
+}
 
 void systick_isr(void) {
-    int s;
-
-    s = splclock();
     systick_ms++;
-    splx(s);
+    if (!systick_enabled)
+	return;
+__asm volatile (
+"       .syntax unified         \n\t"
+"       .thumb                  \n\t"
+
+#ifdef __thumb2__
+"       tst     lr, #0x4        \n\t"   /* Test bit 2 (SPSEL) of EXC_RETURN. */
+"       ite     eq              \n\t"   /* Came from user or kernel mode? */
+"       mrseq   r0, MSP         \n\t"   /* Kernel mode; stack frame on MSP. */
+"       mrsne   r0, PSP         \n\t"   /* User mode; stack frame on PSP. */
+"       b       systick         \n\t"   /* Call systick(frame); */
+#else /* __thumb__ */
+"       movs    r0, #0x4        \n\t"   /* Test bit 2 (SPSEL).. */
+"       mov     r1, lr          \n\t"   /*   of EXC_RETURN in lr. */
+"       tst     r0, r1          \n\t"   /* Came from user or kernel mode? */
+"       beq     1f              \n\t"
+"       mrs     r0, PSP         \n\t"   /* User mode; stack frame on PSP. */
+"       ldr     r1, =systick    \n\t"   /* Call systick(frame); */
+"       bx      r1              \n\t"
+"1:     mrs     r0, MSP         \n\t"   /* Kernel mode; stack frame on MSP. */
+"       ldr     r1, =systick    \n\t"   /* Call systick(frame); */
+"       bx      r1              \n\t"
+#endif
+		);
+}
+
+void
+systick(struct clockframe *frame)
+{
+    hardclock((caddr_t)frame->cf_pc, frame->cf_psr);
 }

@@ -53,16 +53,16 @@ usb_packet_t * usb_malloc(void)
 	uint8_t *p;
 	int s;
 
-	s = arm_disable_interrupts();
+	s = splusb();
 	avail = usb_buffer_available;
 	n = __builtin_clz(avail); // clz = count leading zeros
 	if (n >= NUM_USB_BUFFERS) {
-		arm_enable_interrupts();
-		return NULL;
+	    splx(s);
+	    return NULL;
 	}
 
 	usb_buffer_available = avail & ~(0x80000000 >> n);
-	arm_restore_interrupts(s);
+	splx(s);
 	p = usb_buffer_memory + (n * sizeof(usb_packet_t));
 	*(uint32_t *)p = 0;
 	*(uint32_t *)(p + 4) = 0;
@@ -78,19 +78,19 @@ void usb_free(usb_packet_t *p)
     unsigned int n, mask;
     int s;
 
-	n = ((uint8_t *)p - usb_buffer_memory) / sizeof(usb_packet_t);
-	if (n >= NUM_USB_BUFFERS) return;
-	// if any endpoints are starving for memory to receive
-	// packets, give this memory to them immediately!
-	if (usb_rx_memory_needed && usb_configuration) {
-		usb_rx_memory(p);
-		return;
-	}
+    n = ((uint8_t *)p - usb_buffer_memory) / sizeof(usb_packet_t);
+    if (n >= NUM_USB_BUFFERS) return;
+    // if any endpoints are starving for memory to receive
+    // packets, give this memory to them immediately!
+    if (usb_rx_memory_needed && usb_configuration) {
+	usb_rx_memory(p);
+	return;
+    }
 
-	mask = (0x80000000 >> n);
-	s = arm_disable_interrupts();
-	usb_buffer_available |= mask;
-	arm_restore_interrupts(s);
+    mask = (0x80000000 >> n);
+    s = splusb();
+    usb_buffer_available |= mask;
+    splx(s);
 
 }
 

@@ -27,6 +27,7 @@
 #include <machine/uart.h>
 #include <machine/systick.h>
 #include <machine/teensy.h>
+#include <machine/teensy_usb_dev.h>
 
 #define LED_KERNEL_INIT() /* Nothing. */
 #define LED_KERNEL_ON()   /* Nothing. */
@@ -108,21 +109,17 @@ daddr_t dumplo = (daddr_t) 1024;
  * Machine dependent startup code
  */
 void startup() {
-    mpuinit();
+    mpu_init();
     
-    /**
-     * set pendsv & svcall priorities. systick has already been set to
-     * SPL_CLOCK in the startup code.
-     */
-    arm_set_irq_prio(SVCALL_IRQ, SPL_TOP);   /* syscalls */
-    arm_set_irq_prio(PENDSV_IRQ, SPL_LEAST);  /* syscalls (wtf?) */
+    arm_set_system_handler_prio(SYSTICK_HANDLER, SPL_CLOCK);
+    arm_set_system_handler_prio(SVCALL_HANDLER, SPL_TOP);   /* syscalls */
+    arm_set_system_handler_prio(PENDSV_HANDLER, SPL_LEAST);  /* there are things involved with this */
     
-    /* Enable all configurable fault handlers. */
     arm_enable_fault(MM_FAULT_ENABLE);
     arm_enable_fault(BF_FAULT_ENABLE);
     arm_enable_fault(UF_FAULT_ENABLE);
     
-    ledinit();
+    led_init();
 
     /*
      * Early setup for console devices.
@@ -133,11 +130,6 @@ void startup() {
     uartusbinit(CONS_MINOR);
 #endif
 
-    arm_set_irq_prio(IRQ_FTM0, SPL_TTY);
-    arm_enable_irq(IRQ_FTM0);
-
-    usb_enable_spl();
-    
     /* boothowto = RB_SINGLE; */
 }
 
@@ -216,7 +208,7 @@ static void cpuidentify() {
     }
 
 #ifdef TEENSY35
-    physmem = 255 * 1024; /* yes, minus the eight bytes. */
+    physmem = 255 * 1024;
 #else
     switch ((SIM_SOPT1 >> 12) & 0xF) {
     case 1:
@@ -369,7 +361,8 @@ register int howto;
     }
     printf("halted\n");
 
-    LED_ON(LED_FAULT);
+    led_fault(1);
+
 #ifdef HALTREBOOT
     printf("press any key to reboot...\n");
     cngetc();
@@ -404,11 +397,11 @@ unsigned int micros(void) {
     unsigned int count, current, istatus;
     int s;
 
-    s = arm_disable_interrupts();
+    s = splclock();
     current = SYST_CVR;
     count   = systick_ms;
     istatus = SCB_ICSR; // bit 26 indicates if systick exception pending
-    arm_restore_interrupts(s);
+    splx(s);
     
     if ((istatus & SCB_ICSR_PENDSTSET) && current > 50)
         count++;
@@ -423,14 +416,14 @@ unsigned int micros(void) {
 
 void mdelay(unsigned int msec) {
     unsigned int start = micros();
-
+    
     if (msec > 0) {
         while (1) {
             while ((micros() - start) >= 1000) {
                 msec--;
                 if (msec == 0)
                     return;
-                start += 1000;
+		start += 1000;
             }
         }
     }

@@ -19,13 +19,11 @@
 
 #ifdef KERNEL
 
-#ifndef SIMPLE_INTERRUPTS
-#define HARDMODE
-#endif
-
 #include <machine/atomic.h>
 #include <machine/teensy.h>
 #include <machine/mk64fx512.h>
+#include <machine/machparam.h>
+#include <machine/kinetis.h>
 
 /**
  * DDI0403D chapter B1.5, or how I understood it:
@@ -57,10 +55,9 @@
  * functions should be easy to implement using it.
  *
  * PRIMASK is a one-bit register preventing all exceptions with
- * configurable priority from executing. it is primarily used for
- * turning off exceptions. it also has some interesting properties
- * outlined in "Priority escalation" section of the document, such as
- * turning SVC calls into hard faults.
+ * configurable priority from executing. it also has some interesting
+ * properties outlined in "Priority escalation" section of the document,
+ * such as turning SVC calls into hard faults.
  *
  * setting FAULTMASK raises priority to -1, making the current
  * execution thread essentially a hard fault.
@@ -75,20 +72,67 @@
  *
  */
 
-#define SPL_LEAST     224
+#ifdef HARDMODE
+
+#define SPL_LEAST     240
 #define SPL_SOFTCLOCK 176
 #define SPL_NET       128
-#define SPL_TTY       80
-#define SPL_BIO       64
-#define SPL_CLOCK     48
-#define SPL_HIGH      32
-#define SPL_TOP       16
+
+#define SPL_BIO       80
+#define SPL_TTY       64
+
+#define SPL_CLOCK     32
+#define SPL_HIGH      16
+#define SPL_TOP       0
+
+#define splusb() spltty()
+
+#endif /* HARDMODE */
+
+static inline int arm_set_system_handler_prio(int handler, int prio) {
+    /**
+     * each priority register consists of four 8-bit values for respective
+     * system handlers. there is no reg 0 as handler/exception 0 is not defined
+     * and 1-3 are not configurable.
+     *
+     * SCB_SHPR1 = 4-7   (memmanage, busfault, usagefault, reserved)
+     * SCB_SHPR2 = 8-11  (reserved, reserved, reserved, svcall)
+     * SCB_SHPR3 = 12-15 (debugmon, reserved, pendsv, systick)
+     *
+     */
+    
+    int c;
+    
+    switch (handler) {
+    case SVCALL_HANDLER: /* SCB_SHPR2 bits 0-7 */
+	c = SCB_SHPR2;
+	c &= ~0xff;
+	c |= prio & 0xff;
+	SCB_SHPR2 = c;
+	break;
+    case PENDSV_HANDLER: /* SCB_SHPR3 bits 8-15 */
+	c = SCB_SHPR3;
+	c &= ~0xff00;
+	c |= prio & 0xff00;
+	SCB_SHPR3 = c;
+	break;
+    case SYSTICK_HANDLER: /* SCB_SHPR3 bits 0-7 */
+	c = SCB_SHPR3;
+	c &= ~0xff;
+	c |= prio & 0xff;
+	SCB_SHPR3 = c;
+	break;
+    default:
+	return -1;
+    }
+    return c;
+}
 
 static inline int arm_enable_interrupts() {
     uint32_t primask;
     primask = __get_primask();
     __enable_irq_set_barrier();
-    led_intr_ena_on();
+    led_intr(1);
     return primask;
 }
 
@@ -96,14 +140,14 @@ static inline int arm_disable_interrupts() {
     uint32_t primask;
     primask = __get_primask();
     __disable_irq_set_barrier();
-    led_intr_ena_off();
+    led_intr(0);
     return primask;
 }
 
 static inline void arm_restore_interrupts(int s) {
     __set_primask(s);
     __set_barrier();
-    led_intr_ena_on();
+    led_intr(1);
 }
 
 static inline void arm_disable_irq(int irq) {
@@ -138,25 +182,25 @@ static inline void splx(int s) {
     __set_barrier();
     switch (s) {
     case SPL_HIGH:
-        led_spl_high();
+        led_g4bit(7);
         break;
     case SPL_CLOCK:
-        led_spl_clock();
+        led_g4bit(6);
         break;
     case SPL_TTY:
-        led_spl_tty();
+        led_g4bit(5);
         break;
     case SPL_BIO:
-        led_spl_bio();
+	led_g4bit(4);
         break;
     case SPL_NET:
-        led_spl_net();
+	led_g4bit(3);
         break;
     case SPL_SOFTCLOCK:
-        led_spl_softclock();
+	led_g4bit(2);
         break;
     case SPL_LEAST:
-        led_spl_least();
+	led_g4bit(1);
         break;
     }
 }
@@ -165,32 +209,32 @@ static inline int spl0(void) {
     int old;
 
     old = nvic_execution_priority();
-    set_basepri(SPL_LEAST);
+    set_basepri(0);
     __set_barrier();
 
-    led_spl_least();
+    led_g4bit(0);
 
     return old;
 }
 
 #define splhigh()                                                      \
     splraise(SPL_HIGH);                                                \
-    led_spl_high();
+    led_g4bit(6);
 #define splclock()                                                     \
     splraise(SPL_CLOCK);                                               \
-    led_spl_clock();
+    led_g4bit(5);
 #define spltty()                                                       \
     splraise(SPL_TTY);                                                 \
-    led_spl_tty();
+    led_g4bit(4);
 #define splbio()                                                       \
     splraise(SPL_BIO);                                                 \
-    led_spl_bio();
+    led_g4bit(3);
 #define splnet()                                                       \
     splraise(SPL_NET);                                                 \
-    led_spl_net();
+    led_g4bit(2);
 #define splsoftclock()                                                 \
     splraise(SPL_SOFTCLOCK);                                           \
-    led_spl_softclock();
+    led_g4bit(1);
 
 #else
 
