@@ -75,17 +75,17 @@
 #ifdef HARDMODE
 
 #define SPL_LEAST     240
-#define SPL_SOFTCLOCK 176
-#define SPL_NET       128
+#define SPL_SOFTCLOCK 192
+#define SPL_NET       160
 
-#define SPL_BIO       80
-#define SPL_TTY       64
+#define SPL_TTY       128
+#define SPL_BIO       96
 
-#define SPL_CLOCK     32
-#define SPL_HIGH      16
-#define SPL_TOP       0
+#define SPL_CLOCK     64
+#define SPL_HIGH      32
+#define SPL_TOP       16
 
-#define splusb() spltty()
+#define splusb()      spltty()
 
 #endif /* HARDMODE */
 
@@ -95,35 +95,34 @@ static inline int arm_set_system_handler_prio(int handler, int prio) {
      * system handlers. there is no reg 0 as handler/exception 0 is not defined
      * and 1-3 are not configurable.
      *
-     * SCB_SHPR1 = 4-7   (memmanage, busfault, usagefault, reserved)
-     * SCB_SHPR2 = 8-11  (reserved, reserved, reserved, svcall)
-     * SCB_SHPR3 = 12-15 (debugmon, reserved, pendsv, systick)
-     *
+     * SCB_SHPR1 = 7-4   (reserved, busfault, memmanage, usagefault)
+     * SCB_SHPR2 = 11-8  (svcall, reserved, reserved, reserved)
+     * SCB_SHPR3 = 15-12 (systick, pendsv, reserved, debugmon)
      */
-    
+
     int c;
-    
+
     switch (handler) {
-    case SVCALL_HANDLER: /* SCB_SHPR2 bits 0-7 */
-	c = SCB_SHPR2;
-	c &= ~0xff;
-	c |= prio & 0xff;
-	SCB_SHPR2 = c;
-	break;
-    case PENDSV_HANDLER: /* SCB_SHPR3 bits 8-15 */
-	c = SCB_SHPR3;
-	c &= ~0xff00;
-	c |= prio & 0xff00;
-	SCB_SHPR3 = c;
-	break;
-    case SYSTICK_HANDLER: /* SCB_SHPR3 bits 0-7 */
-	c = SCB_SHPR3;
-	c &= ~0xff;
-	c |= prio & 0xff;
-	SCB_SHPR3 = c;
-	break;
+    case SVCALL_HANDLER: /* SCB_SHPR2 bits 31-24 */
+        c = SCB_SHPR2;
+        c &= ~0xff000000;
+        c |= (prio << 24) & 0xff000000;
+        SCB_SHPR2 = c;
+        break;
+    case PENDSV_HANDLER: /* SCB_SHPR3 bits 23-16 */
+        c = SCB_SHPR3;
+        c &= ~0xff0000;
+        c |= (prio << 16) & 0xff0000;
+        SCB_SHPR3 = c;
+        break;
+    case SYSTICK_HANDLER: /* SCB_SHPR3 bits 31-24*/
+        c = SCB_SHPR3;
+        c &= ~0xff000000;
+        c |= (prio << 24) & 0xff000000;
+        SCB_SHPR3 = c;
+        break;
     default:
-	return -1;
+        return -1;
     }
     return c;
 }
@@ -174,35 +173,20 @@ static inline int splraise(int new) {
     old = nvic_execution_priority();
     set_basepri_max(new);
     __set_barrier();
+    if (new == SPL_LEAST)
+        teensy_gpio_led_spl(7);
+    else
+        teensy_gpio_led_spl(~(new >> 5));
     return old;
 }
 
 static inline void splx(int s) {
     set_basepri(s);
     __set_barrier();
-    switch (s) {
-    case SPL_HIGH:
-        led_g4bit(7);
-        break;
-    case SPL_CLOCK:
-        led_g4bit(6);
-        break;
-    case SPL_TTY:
-        led_g4bit(5);
-        break;
-    case SPL_BIO:
-	led_g4bit(4);
-        break;
-    case SPL_NET:
-	led_g4bit(3);
-        break;
-    case SPL_SOFTCLOCK:
-	led_g4bit(2);
-        break;
-    case SPL_LEAST:
-	led_g4bit(1);
-        break;
-    }
+    if (s == SPL_LEAST)
+        teensy_gpio_led_spl(7);
+    else
+        teensy_gpio_led_spl(~(s >> 5));
 }
 
 static inline int spl0(void) {
@@ -211,30 +195,17 @@ static inline int spl0(void) {
     old = nvic_execution_priority();
     set_basepri(0);
     __set_barrier();
-
-    led_g4bit(0);
+    teensy_gpio_led_spl(0);
 
     return old;
 }
 
-#define splhigh()                                                      \
-    splraise(SPL_HIGH);                                                \
-    led_g4bit(6);
-#define splclock()                                                     \
-    splraise(SPL_CLOCK);                                               \
-    led_g4bit(5);
-#define spltty()                                                       \
-    splraise(SPL_TTY);                                                 \
-    led_g4bit(4);
-#define splbio()                                                       \
-    splraise(SPL_BIO);                                                 \
-    led_g4bit(3);
-#define splnet()                                                       \
-    splraise(SPL_NET);                                                 \
-    led_g4bit(2);
-#define splsoftclock()                                                 \
-    splraise(SPL_SOFTCLOCK);                                           \
-    led_g4bit(1);
+#define splhigh()      splraise(SPL_HIGH)
+#define splclock()     splraise(SPL_CLOCK)
+#define spltty()       splraise(SPL_TTY)
+#define splbio()       splraise(SPL_BIO)
+#define splnet()       splraise(SPL_NET)
+#define splsoftclock() splraise(SPL_SOFTCLOCK)
 
 #else
 

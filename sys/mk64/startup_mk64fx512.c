@@ -32,8 +32,9 @@
 
 #include <machine/intr.h>
 #include <machine/machparam.h>
-#include <machine/mk64fx512.h>
 #include <machine/kinetis.h>
+#include <machine/mk64fx512.h>
+#include <machine/teensy.h>
 
 // Flash Security Setting. On Teensy 3.2, you can lock the MK20 chip to prevent
 // ( The same applies to the Teensy 3.5 and Teensy 3.6 for their processors )
@@ -155,7 +156,8 @@ void fault_isr(void)
 
 void unused_isr(void)
 {
-	fault_isr();
+    teensy_gpio_led_value(0xAA);
+    fault_isr();
 }
 
 void nmi_isr(void)		__attribute__ ((weak, alias("unused_isr")));
@@ -994,19 +996,17 @@ void ResetHandler(void)
 	__asm__ volatile("ldr lr,=__user_data_start+1");
 	__asm__ volatile("bx lr");
 
-	led_init();
-
 	/* fault blinks @~2 Hz, spl counts 0-7 */
 	
         while (1) {
 	    volatile unsigned int i;
 	    volatile unsigned int j;
-	    for (i=0; i < 0x1fffff; i++)
+	    for (i=0; i < 0x1ffff; i++)
 		;
 
-	    led_y3bit(j % 8);
+	    teensy_gpio_led_spl(j % 8);
 	    
-	    GPIOB_PTOR = (1 << 11);
+	    led_fault(j % 2);
 
 	    i=0;
 	    j++;

@@ -7,14 +7,14 @@
         volatile int i;                                                \
         for (i = 0; i < 0x18ffff; i++)                                 \
             ;                                                          \
-        led_g4bit(xyz);                                                \
+        teensy_gpio_led_value(xyz);				       \
         if (xyzd)                                                      \
             xyz = xyz << 1;                                            \
         else                                                           \
             xyz = xyz >> 1;                                            \
         if (xyz == 1)                                                  \
             xyzd = 1;                                                  \
-        else if (xyz & (1 << 3))                                       \
+        else if (xyz & (1 << 7))                                       \
             xyzd = 0;                                                  \
     }
 

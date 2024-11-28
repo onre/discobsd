@@ -119,7 +119,11 @@ void startup() {
     arm_enable_fault(BF_FAULT_ENABLE);
     arm_enable_fault(UF_FAULT_ENABLE);
     
-    led_init();
+    teensy_gpio_init();
+    /* teensy_gpio_led_test(); */
+    led_fault(0);
+    teensy_gpio_led_spl(0);
+    teensy_gpio_led_value(0);
 
     /*
      * Early setup for console devices.
@@ -292,14 +296,20 @@ void kconfig() {
  * Sit and wait for something to happen...
  */
 void idle() {
+    static u_char idling;
+
     /* Indicate that no process is running. */
     noproc = 1;
 
     /* Set SPL low so we can be interrupted. */
     int x  = spl0();
 
-    led_control(LED_KERNEL, 0);
-
+#if 0
+    idling = (idling ? idling + (idling << 1) : 1);
+    
+    teensy_gpio_led_value(idling);
+#endif
+    
     /* Wait for something to happen. */
     dsb();
     isb();
@@ -361,6 +371,7 @@ register int howto;
     }
     printf("halted\n");
 
+    teensy_gpio_led_value(0xf0);
     led_fault(1);
 
 #ifdef HALTREBOOT

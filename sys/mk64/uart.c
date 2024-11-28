@@ -211,11 +211,13 @@ void cnstart (struct tty *tp);
 
 void uart0_status_isr(void) {
     if (alive == 1) {
+	teensy_gpio_led_value(0xa0);
         uartintr(makedev(UART_MAJOR, 0));
     }
 }
 void uart0_error_isr(void) {
     if (alive == 1) {
+	teensy_gpio_led_value(0xa1);
         uartintr(makedev(UART_MAJOR, 0));
     }
 }
@@ -260,22 +262,25 @@ void uartinit(int unit) {
 
         inst->regs->BDH    = 0;
         inst->regs->BDL    = 65;
-        inst->regs->C4     = 0b00100; /* 0b00100 or 0b00011 */
-
+        inst->regs->C4     = 0b00011; /* 0b00100 or 0b00011 */
+	inst->regs->C2     = 0;
+	inst->regs->S2     = 0;
+	
         inst->regs->C1     = UART_C1_ILT;
-        inst->regs->C2     = C2_TX_INACTIVE;
 	inst->regs->C5     = 0;
-
-        inst->regs->TWFIFO = 2; // tx watermark, causes S1_TDRE to set
-        inst->regs->RWFIFO = 2; // rx watermark, causes S1_RDRF to set
 
         inst->regs->PFIFO  = UART_PFIFO_TXFE | UART_PFIFO_RXFE |
                             UART_PFIFO_TXFIFOSIZE(6) |
                             UART_PFIFO_RXFIFOSIZE(6);
 
+
+        inst->regs->TWFIFO = 2; // tx watermark, causes S1_TDRE to set
+        inst->regs->RWFIFO = 4; // rx watermark, causes S1_RDRF to set
+
         /*
 	 * deep breath, hope for the best and activate isr
 	 */
+        inst->regs->C2     = C2_ENABLE;
         arm_set_irq_prio(IRQ_UART0_STATUS, SPL_TTY);
         arm_set_irq_prio(IRQ_UART0_ERROR, SPL_TTY);
 
@@ -302,7 +307,6 @@ int uartopen(dev_t dev, int flag, int mode) {
 
     tp = &uartttys[unit];
 
-    uip         = (struct uart_inst *) tp->t_addr;
     tp->t_oproc = uartstart;
     if ((tp->t_state & TS_ISOPEN) == 0) {
         if (tp->t_ispeed == 0) {
@@ -324,9 +328,6 @@ int uartopen(dev_t dev, int flag, int mode) {
 int uartclose(dev_t dev, int flag, int mode) {
     register int unit       = minor(dev);
     register struct tty *tp = &uartttys[unit];
-
-    if (!tp->t_addr)
-        return ENODEV;
 
     ttywflush(tp);
     ttyclose(tp);
@@ -355,9 +356,6 @@ int uartread(dev_t dev, struct uio *uio, int flag) {
     register int unit       = minor(dev);
     register struct tty *tp = &uartttys[unit];
 
-    if (!tp->t_addr)
-        return ENODEV;
-
     return ttread(tp, uio, flag);
 }
 
@@ -366,18 +364,12 @@ int uartwrite(dev_t dev, struct uio *uio, int flag) {
     register int unit       = minor(dev);
     register struct tty *tp = &uartttys[unit];
 
-    if (!tp->t_addr)
-        return ENODEV;
-
     return ttwrite(tp, uio, flag);
 }
 
 int uartselect(dev_t dev, int rw) {
     register int unit       = minor(dev);
     register struct tty *tp = &uartttys[unit];
-
-    if (!tp->t_addr)
-        return ENODEV;
 
     return (ttyselect(tp, rw));
 }
@@ -387,9 +379,6 @@ int uartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
     register int unit       = minor(dev);
     register struct tty *tp = &uartttys[unit];
     register int error;
-
-    if (!tp->t_addr)
-        return ENODEV;
 
     error = ttioctl(tp, cmd, addr, flag);
     if (error < 0)
@@ -478,9 +467,10 @@ void uartintr(dev_t dev) {
     s   = spltty();
 
     uip = (struct uart_inst *) &uart[unit];
+    teensy_gpio_led_value(0xb0);
 
-    /* receive data above watermark OR idle line */
-    if (uip->regs->S1 & (UART_S1_RDRF | UART_S1_IDLE)) {
+    /* receive data above watermark or idle line */
+    if ((uip->regs->S1 & (UART_S1_RDRF | UART_S1_IDLE)) || uip->regs->RCFIFO) {
         /* disable irqs to avoid ending up back here with the underrun error  */
         arm_disable_irq(IRQ_UART0_STATUS);
         arm_disable_irq(IRQ_UART0_ERROR);
@@ -515,10 +505,12 @@ void uartintr(dev_t dev) {
             arm_enable_irq(IRQ_UART0_STATUS);
             arm_enable_irq(IRQ_UART0_ERROR);
 
+	    teensy_gpio_led_value(0xb1);
 	    do {
 		n = uip->regs->D;
 		ttyinput(n, tp);
 	    } while (--avail > 0);
+	    teensy_gpio_led_value(0xb2);
 	    
         }
     }
@@ -527,6 +519,8 @@ void uartintr(dev_t dev) {
     /* TIE = transmitter interrupt, TDRE = transmit data below watermark */
     if ((c & UART_C2_TIE) && (uip->regs->S1 & UART_S1_TDRE)) {
 	avail = uip->regs->S1; /* value not used, part of interrupt clearing dance */
+	
+	teensy_gpio_led_value(0xb3);
         if (tp->t_outq.c_cc) {
             do {
                 uip->regs->D = getc(&tp->t_outq);
@@ -545,6 +539,8 @@ void uartintr(dev_t dev) {
 	/* turn the thing off, then! */
         uip->regs->C2 = C2_TX_INACTIVE;
 
+	teensy_gpio_led_value(0);
+	
         if (tp->t_state & TS_BUSY) {
             tp->t_state &= ~TS_BUSY;
         }
@@ -581,8 +577,8 @@ void uartstart(struct tty *tp) {
 	c             = getc(&tp->t_outq);
 	uip->regs->D  = c;
     } while(tp->t_outq.c_cc && (uip->regs->TCFIFO < 128));
-    tp->t_state |= TS_BUSY;
     uip->regs->C2 = C2_TX_ACTIVE;
+    tp->t_state |= TS_BUSY;
 
     splx(s);
 }
@@ -606,9 +602,16 @@ void uartputc(dev_t dev, char c) {
         goto again;
     }
 
-    uip->regs->D = c;
-    tp->t_state |= TS_BUSY;
-    uip->regs->C2 = C2_TX_ACTIVE;
+    while (1) {
+	teensy_gpio_led_value(0xb5);
+        if (uip->regs->S1 & UART_S1_TDRE) {
+	    teensy_gpio_led_value(0xb6);
+            uip->regs->D = c;
+            tp->t_state |= TS_BUSY;
+            uip->regs->C2 = C2_TX_ACTIVE;
+	    break;
+        }
+    }
 
     splx(s);
 }
@@ -621,6 +624,7 @@ char uartgetc(dev_t dev) {
 
     s = spltty();
 
+    teensy_gpio_led_value(0xb4);
     for (;;) {
         if (uip->regs->RCFIFO) {
             c = uip->regs->D;

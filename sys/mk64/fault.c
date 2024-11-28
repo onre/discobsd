@@ -185,7 +185,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     cnt.v_trap++;
 #endif
 
-    led_y3bit(type>>1); /* hard 0, mm 1, bf 2, uf 4 */
+    teensy_gpio_led_spl(type>>1); /* hard 0, mm 1, bf 2, uf 4 */
     
     printf("fault type: 0x%x", type);
     printf("%s\n",
@@ -201,7 +201,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
             case T_MM_MSTKERR:
             case T_MM_MLSPERR:
                 psig = SIGSEGV;
-		led_g4bit(bit);
+		teensy_gpio_led_value(bit);
                 printf("MemManage Fault\n");
                 arm_clear_fault(bit, T_MM);
                 break;
@@ -212,7 +212,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
             case T_BF_STKERR:
             case T_BF_LSPERR:
                 psig = SIGBUS;
-		led_g4bit(bit);
+		teensy_gpio_led_value(bit);
                 printf("BusFault\n");
                 arm_clear_fault(bit, T_BF);
                 break;
@@ -223,12 +223,13 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
             case T_UF_UNALIGNED:
             case T_UF_DIVBYZERO:
                 psig = SIGILL;
-		led_g4bit(bit >> 1);
+		teensy_gpio_led_value(bit);
                 printf("UsageFault\n");
                 arm_clear_fault(bit, T_UF);
                 break;
             default:
                 psig = SIGILL;
+		teensy_gpio_led_value(bit);
                 printf("unknown fault type\n");
                 arm_clear_fault(bit, type);
                 break;
@@ -261,7 +262,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     printf("fault entry EXC_RETURN value:\n");
     printf(" lr:\t0x%08x\n", fault_lr);
 
-#if 1
+#if 0
     i = 0;
 
     GPIOB_PCOR = (1<<11);
