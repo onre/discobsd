@@ -212,13 +212,11 @@ void cnstart (struct tty *tp);
 
 void uart0_status_isr(void) {
     if (alive == 1) {
-	teensy_gpio_led_value(0xa0);
         uartintr(makedev(UART_MAJOR, 0));
     }
 }
 void uart0_error_isr(void) {
     if (alive == 1) {
-	teensy_gpio_led_value(0xa1);
         uartintr(makedev(UART_MAJOR, 0));
     }
 }
@@ -272,7 +270,7 @@ void uartinit(int unit) {
 
 	inst->fifosz = 64;
 
-        inst->regs->TWFIFO = 16; // tx watermark, causes S1_TDRE to set
+        inst->regs->TWFIFO = 1; // tx watermark, causes S1_TDRE to set
         inst->regs->RWFIFO = 4; // rx watermark, causes S1_RDRF to set
 
         /*
@@ -452,7 +450,6 @@ void uartintr(dev_t dev) {
     s   = spltty();
 
     uip = (struct uart_inst *) &uart[unit];
-    teensy_gpio_led_value(0xb0);
 
     /* receive data above watermark or idle line */
     if ((uip->regs->S1 & (UART_S1_RDRF | UART_S1_IDLE)) || uip->regs->RCFIFO) {
@@ -489,14 +486,11 @@ void uartintr(dev_t dev) {
         } else {
             arm_enable_irq(IRQ_UART0_STATUS);
             arm_enable_irq(IRQ_UART0_ERROR);
+
+	    n = uip->regs->D;
+	    ttyinput(n, tp);
+
 	    splx(s);
-	    teensy_gpio_led_value(0xb1);
-	    do {
-		n = uip->regs->D;
-		ttyinput(n, tp);
-	    } while (--avail > 0);
-	    teensy_gpio_led_value(0xb2);
-	    s = spltty();
         }
     }
     c = uip->regs->C2;
@@ -505,11 +499,10 @@ void uartintr(dev_t dev) {
     if ((c & UART_C2_TIE) && (uip->regs->S1 & UART_S1_TDRE)) {
 	avail = uip->regs->S1; /* value not used, part of interrupt clearing dance */
 	
-	teensy_gpio_led_value(0xb3);
-        if (tp->t_outq.c_cc) {
-	    while (tp->t_outq.c_cc && uip->regs->TCFIFO < (uip->fifosz - 1)) {
+        if ( 0 && tp->t_outq.c_cc) {
+	    // 	    while (tp->t_outq.c_cc && uip->regs->TCFIFO < (uip->fifosz - 1)) {
                 uip->regs->D = getc(&tp->t_outq);
-            };
+		//            };
         }
 	/* interrupt clearing dance does not seem to happen if there's nothing to send,
 	 * but that's okay as we will stop listening to the interrupt anyway.
@@ -525,8 +518,6 @@ void uartintr(dev_t dev) {
 	/* turn the thing off, then! */
         uip->regs->C2 = C2_TX_INACTIVE;
 
-	teensy_gpio_led_value(0);
-	
         if (tp->t_state & TS_BUSY) {
             tp->t_state &= ~TS_BUSY;
         }
@@ -558,20 +549,13 @@ void uartstart(struct tty *tp) {
     if (tp->t_outq.c_cc == 0)
         goto out;
 
-    if (uip->regs->TCFIFO < uip->regs->TWFIFO) {
-	int got = 0;
-
-	tp->t_state |= TS_BUSY;
-        while (tp->t_outq.c_cc && uip->regs->TCFIFO < (uip->fifosz - 1)) {
-            uip->regs->D = getc(&tp->t_outq);
-	    got++;
-        }
-
-        if (got) {
+    while(tp->t_outq.c_cc) {
+        if (uip->regs->TCFIFO < uip->regs->TWFIFO) {
+            tp->t_state |= TS_BUSY;
+            uip->regs->D  = getc(&tp->t_outq);
             uip->regs->C2 = C2_TX_ACTIVE;
         }
     }
-
     splx(s);
 }
 
@@ -613,7 +597,6 @@ char uartgetc(dev_t dev) {
 
     s = spltty();
 
-    teensy_gpio_led_value(0xb4);
     for (;;) {
         if (uip->regs->RCFIFO) {
             c = uip->regs->D;
