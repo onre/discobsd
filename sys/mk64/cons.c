@@ -55,6 +55,8 @@ int cnioctl(dev_t cn, u_int cmd, caddr_t addr, int flag) {
  * Put a symbol on console terminal.
  */
 void cnputc(char c) {
+    if (c == '\n')
+        cnputc('\r');
     if (cdevsw[CONS_MAJOR].r_write) {
         dev_t dev = makedev(CONS_MAJOR, CONS_MINOR);
 
@@ -64,8 +66,6 @@ void cnputc(char c) {
         ttstart(&cdevsw[CONS_MAJOR].d_ttys[CONS_MINOR]);
         ttyflush(&cdevsw[CONS_MAJOR].d_ttys[CONS_MINOR], 0);
     }
-    if (c == '\n')
-        cnputc('\r');
 }
 
 /*

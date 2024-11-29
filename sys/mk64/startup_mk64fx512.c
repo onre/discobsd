@@ -615,9 +615,10 @@ void ResetHandler(void)
 	memset(&u, 0, 0x800);
 
 	/* turn on double-word stack aligment at first possible moment */
-	SCB_CCR |= SCB_CCR_STKALIGN_MASK; 
-	/* ... lets get back to that someday */
 	#if 0
+	SCB_CCR |= SCB_CCR_STKALIGN_MASK; 
+	#else
+	/* ... lets get back to that someday */
 	SCB_CCR &= ~SCB_CCR_STKALIGN_MASK;
 	SCB_CCR &= ~(1<<3);
 	SCB_CCR &= ~(1<<8);
@@ -651,10 +652,6 @@ void ResetHandler(void)
 	/* these settings allow using all power modes the chip supports. */
 	SMC_PMPROT = SMC_PMPROT_AVLP | SMC_PMPROT_ALLS | SMC_PMPROT_AVLLS;
 	
-	/* make the led port writable and turn the led on. */
-	PORTC_PCR5 = PORT_PCR_MUX(1) | PORT_PCR_DSE | PORT_PCR_SRE;
-	GPIOC_PDDR |= (1<<5);
-
 	/* src and dest have been initialized at declaration as follows:
 	 *
 	 * src = &_etext, dest == &_sdata

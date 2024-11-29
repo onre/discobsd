@@ -185,6 +185,7 @@ struct uart_inst {
     volatile KINETISK_UART_t *regs;
     u_char rx_pin_num;
     u_char tx_pin_num;
+    int fifosz;
 };
 
 static struct uart_inst uart[NUART] = {
@@ -256,12 +257,10 @@ void uartinit(int unit) {
 
     uart01_common:
 	
-        divisor = BAUD2DIV(115200);
-
-        /* fixed 115200 for now. */
+        /* fixed speed for now. */
 
         inst->regs->BDH    = 0;
-        inst->regs->BDL    = 65;
+        inst->regs->BDL    = 65; /* 65 = 115200, thus 780 = 9600, means BDH 3, BDL c */
         inst->regs->C4     = 0b00011; /* 0b00100 or 0b00011 */
 	inst->regs->C2     = 0;
 	inst->regs->S2     = 0;
@@ -269,12 +268,11 @@ void uartinit(int unit) {
         inst->regs->C1     = UART_C1_ILT;
 	inst->regs->C5     = 0;
 
-        inst->regs->PFIFO  = UART_PFIFO_TXFE | UART_PFIFO_RXFE |
-                            UART_PFIFO_TXFIFOSIZE(6) |
-                            UART_PFIFO_RXFIFOSIZE(6);
+        inst->regs->PFIFO  = UART_PFIFO_TXFE | UART_PFIFO_RXFE;
 
+	inst->fifosz = 64;
 
-        inst->regs->TWFIFO = 2; // tx watermark, causes S1_TDRE to set
+        inst->regs->TWFIFO = 16; // tx watermark, causes S1_TDRE to set
         inst->regs->RWFIFO = 4; // rx watermark, causes S1_RDRF to set
 
         /*
@@ -308,10 +306,12 @@ int uartopen(dev_t dev, int flag, int mode) {
     tp = &uartttys[unit];
 
     tp->t_oproc = uartstart;
+    uip = &uart[unit];
+    tp->t_addr = (caddr_t) uip;
     if ((tp->t_state & TS_ISOPEN) == 0) {
         if (tp->t_ispeed == 0) {
-            tp->t_ispeed = BBAUD(UART_BAUD);
-            tp->t_ospeed = BBAUD(UART_BAUD);
+            tp->t_ispeed = B115200; //BBAUD(UART_BAUD);
+            tp->t_ospeed = B115200; //BBAUD(UART_BAUD);
         }
         ttychars(tp);
         tp->t_state = TS_ISOPEN | TS_CARR_ON;
@@ -334,21 +334,6 @@ int uartclose(dev_t dev, int flag, int mode) {
 
     
     return (0);
-}
-
-void uartflush(dev_t dev) {
-    register int unit       = minor(dev);
-    register struct tty *tp;
-    register struct uart_inst *uip;
-
-    uip = &uart[unit];
-    tp = &uartttys[unit];
-
-    uip->regs->C2 &= ~(UART_C2_RE | UART_C2_RIE | UART_C2_ILIE);
-    uip->regs->CFIFO = UART_CFIFO_RXFLUSH;
-    uip->regs->C2 |= (UART_C2_RE | UART_C2_RIE | UART_C2_ILIE);
-
-    tp->t_state &= ~TS_BUSY;
 }
 
 /*ARGSUSED*/
@@ -504,14 +489,14 @@ void uartintr(dev_t dev) {
         } else {
             arm_enable_irq(IRQ_UART0_STATUS);
             arm_enable_irq(IRQ_UART0_ERROR);
-
+	    splx(s);
 	    teensy_gpio_led_value(0xb1);
 	    do {
 		n = uip->regs->D;
 		ttyinput(n, tp);
 	    } while (--avail > 0);
 	    teensy_gpio_led_value(0xb2);
-	    
+	    s = spltty();
         }
     }
     c = uip->regs->C2;
@@ -522,16 +507,17 @@ void uartintr(dev_t dev) {
 	
 	teensy_gpio_led_value(0xb3);
         if (tp->t_outq.c_cc) {
-            do {
+	    while (tp->t_outq.c_cc && uip->regs->TCFIFO < (uip->fifosz - 1)) {
                 uip->regs->D = getc(&tp->t_outq);
-            } while (uip->regs->TCFIFO < 128);
+            };
         }
 	/* interrupt clearing dance does not seem to happen if there's nothing to send,
 	 * but that's okay as we will stop listening to the interrupt anyway.
 	 */
 
-        if (uip->regs->S1 & UART_S1_TDRE)
+        if (uip->regs->S1 & UART_S1_TDRE) {
             uip->regs->C2 = C2_TX_COMPLETING; /* ignore TIE, wait for TCIE */
+        }
     }
     
     /* TC = transmit complete interrupt */
@@ -572,13 +558,19 @@ void uartstart(struct tty *tp) {
     if (tp->t_outq.c_cc == 0)
         goto out;
 
-    /* ask less, do more */
-    do {
-	c             = getc(&tp->t_outq);
-	uip->regs->D  = c;
-    } while(tp->t_outq.c_cc && (uip->regs->TCFIFO < 128));
-    uip->regs->C2 = C2_TX_ACTIVE;
-    tp->t_state |= TS_BUSY;
+    if (uip->regs->TCFIFO < uip->regs->TWFIFO) {
+	int got = 0;
+
+	tp->t_state |= TS_BUSY;
+        while (tp->t_outq.c_cc && uip->regs->TCFIFO < (uip->fifosz - 1)) {
+            uip->regs->D = getc(&tp->t_outq);
+	    got++;
+        }
+
+        if (got) {
+            uip->regs->C2 = C2_TX_ACTIVE;
+        }
+    }
 
     splx(s);
 }
@@ -587,27 +579,24 @@ void uartputc(dev_t dev, char c) {
     int unit                       = minor(dev);
     struct tty *tp                 = &uartttys[unit];
     register struct uart_inst *uip = &uart[unit];
-    register int s, timo;
+    int s, timo;
 
     s   = spltty();
  again:
-    timo = 3000;
+    timo = 300000;
 
-    while (tp->t_state & TS_BUSY)
-	if (--timo == 0)
-	    break;
+    if (uip->regs->TCFIFO)
+	mdelay(10);
 
     if (tp->t_state & TS_BUSY) {
-	uartflush(dev);
+	uartintr(dev);
         goto again;
     }
 
+    tp->t_state |= TS_BUSY;
     while (1) {
-	teensy_gpio_led_value(0xb5);
-        if (uip->regs->S1 & UART_S1_TDRE) {
-	    teensy_gpio_led_value(0xb6);
+        if (uip->regs->TCFIFO < (uip->fifosz >> 1)) {
             uip->regs->D = c;
-            tp->t_state |= TS_BUSY;
             uip->regs->C2 = C2_TX_ACTIVE;
 	    break;
         }
@@ -638,6 +627,17 @@ char uartgetc(dev_t dev) {
     return (unsigned char) c;
 }
 
+int uartfifobytes(int b) {
+    int r = 4;
+    
+    if (!b)
+	return 1;
+    for (;b;b--)
+	r *= 4;
+
+    return r;
+}
+
 /*
  * Test to see if device is present.
  * Return true if found and initialized ok.
@@ -657,16 +657,19 @@ static int uartprobe(struct conf_device *config) {
         return 0;
     }
 
-    printf("uart%d: found", unit + 1);
+    /* Initialize the device. */
+    uartttys[unit].t_addr = (caddr_t) &uart[unit];
+    if (!is_console)
+        uartinit(unit);
+    
+    printf("uart%d: found, %d tx/%d rx bytes FIFO", unit + 1,
+	   uartfifobytes(((&uart[unit])->regs->PFIFO >> 4) & 0x7),
+	   uartfifobytes(((&uart[unit])->regs->PFIFO >> 4) & 0x7));
 
     if (is_console)
         printf(", console");
     printf("\n");
 
-    /* Initialize the device. */
-    uartttys[unit].t_addr = (caddr_t) &uart[unit];
-    if (!is_console)
-        uartinit(unit);
     return 1;
 }
 
