@@ -473,6 +473,7 @@ static int yieldTimeout(int (*fcn)()) {
     while (fcn()) {
         if ((systick_ms - m) > BUSY_TIMEOUT_MS) {
             m_busyFcn = 0;
+	    printf("sdio: timeout\n");
             return 1;
         }
         /* yield(); */

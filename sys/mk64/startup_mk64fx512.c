@@ -569,24 +569,14 @@ void flextimer_init(void) {
 
 void early_irq_init(void) {
   /**
-   * get systick going.
+   * get systick going at priority 32. machdep.c:startup() will adjust the priority.
    */
   SYST_RVR = (F_CPU / 1000) - 1;
   SYST_CVR = 0;
   SYST_CSR = SYST_CSR_CLKSOURCE | SYST_CSR_TICKINT | SYST_CSR_ENABLE;
-  /* SCB_SHPR3 = 0x20200000;  Systick = priority 32 */
+  SCB_SHPR3 = 0x20000000;
 
   arm_enable_interrupts();
-
-  /**
-   *  relevant bits from Teensyduino internal init func
-   */
-
-  NVIC_ENABLE_IRQ(IRQ_PORTA);
-  NVIC_ENABLE_IRQ(IRQ_PORTB);
-  NVIC_ENABLE_IRQ(IRQ_PORTC);
-  NVIC_ENABLE_IRQ(IRQ_PORTD);
-  NVIC_ENABLE_IRQ(IRQ_PORTE);
 }
 
 
@@ -624,11 +614,8 @@ void ResetHandler(void)
 	SCB_CCR &= ~(1<<8);
 	#endif
 
-	
-	/* allow FPU memory access */
 	SCB_CPACR = 0x00F00000;
 
-	// enable clocks to always-used peripherals
 	SIM_SCGC3 = SIM_SCGC3_ADC1 | SIM_SCGC3_FTM2 | SIM_SCGC3_FTM3;
 	SIM_SCGC5 = 0x00043F82;		// clocks active to all GPIO
 	SIM_SCGC6 = SIM_SCGC6_RTC | SIM_SCGC6_FTM0 | SIM_SCGC6_FTM1 | SIM_SCGC6_ADC0 | SIM_SCGC6_FTFL;
@@ -637,15 +624,15 @@ void ResetHandler(void)
 	// If the RTC oscillator isn't enabled, get it started early.
 	// But don't do this early on Teensy 3.6 - RTC_CR depends on 3.3V+VBAT
 	// which may be ~0.4V "behind" 3.3V if the power ramps up slowly.
-	#if 0
 	if (!(RTC_CR & RTC_CR_OSCE)) {
 		RTC_SR = 0;
 		RTC_CR = RTC_CR_SC16P | RTC_CR_SC4P | RTC_CR_OSCE;
 	}
-	#endif
 #endif
+#if 0
 	// release I/O pins hold, if we woke up from VLLS mode
 	if (PMC_REGSC & PMC_REGSC_ACKISO) PMC_REGSC |= PMC_REGSC_ACKISO;
+#endif
 
 	// since this is a write once register, make it visible to all F_CPU's
 	// so we can into other sleep modes in the future at any speed
@@ -690,9 +677,10 @@ void ResetHandler(void)
 	while (dest < &_ebss) *dest++ = 0;
 	/*
 	 * while at it, let's zero-fill the high RAM too.
+	 * on second thought, let's pattern-fill instead.
 	 */
 	dest = &__user_data_start;
-	while (dest < &__user_data_end) *dest++ = 0;
+	while (dest < &__user_data_end) *dest++ = 0x6502cafe;
 	
 	/* copy interrupt vector table from flash to RAM, set the "default" priority
 	 * to the lowest level and switch over to the RAM copy of the vector table.

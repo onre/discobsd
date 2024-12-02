@@ -27,6 +27,7 @@
 #include <machine/fault.h>
 #include <machine/frame.h>
 #include <machine/intr.h>
+#include <machine/systick.h>
 #include <machine/teensy.h>
 
 /*
@@ -180,6 +181,8 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     /* If true, BFAR holds the BusFault fault-triggering address. */
     unsigned int bfarvalid  = cfsr & BFARVALID_BIT; /* CFSR bit[15] */
 
+    static u_long prevfault;
+    
     syst = u.u_ru.ru_stime;
 #ifdef UCB_METER
     cnt.v_trap++;
@@ -247,10 +250,10 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
 	printf("mpu error registers:\n");
 	printf(" sperr:\t0b" SPERR_F "\n", SPERR_B);
 	printf(" ear0:\t0x%08x\tedr0:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
-	printf(" ear1:\t0x%08x\tedr1:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
-	printf(" ear2:\t0x%08x\tedr2:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
-	printf(" ear3:\t0x%08x\tedr3:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
-	printf(" ear4:\t0x%08x\tedr4:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
+	printf(" ear1:\t0x%08x\tedr1:\t0x%08x\n", MPU_EAR1, MPU_EDR1);
+	printf(" ear2:\t0x%08x\tedr2:\t0x%08x\n", MPU_EAR2, MPU_EDR2);
+	printf(" ear3:\t0x%08x\tedr3:\t0x%08x\n", MPU_EAR3, MPU_EDR3);
+	printf(" ear4:\t0x%08x\tedr4:\t0x%08x\n", MPU_EAR4, MPU_EDR4);
     }
 
     printf("fault status registers:\n");
@@ -262,6 +265,13 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     printf("fault entry EXC_RETURN value:\n");
     printf(" lr:\t0x%08x\n", fault_lr);
 
+
+    if (systick_ms - prevfault < 1000) {
+	panic("fault barrage");
+    }
+
+    led_fault(0);
+    
 #if 0
     i = 0;
 
@@ -280,11 +290,10 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
         }
     }
 #endif
+    prevfault = systick_ms;
     
     arm_enable_interrupts();
 
     psignal(u.u_procp, psig);
     userret(frame->ff_pc, syst);
-
-    led_control(LED_KERNEL, 0);
 }

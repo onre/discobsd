@@ -16,6 +16,12 @@
 
 #ifdef KERNEL
 
+#include <sys/param.h>
+#include <sys/conf.h>
+#include <sys/kconfig.h>
+#include <sys/types.h>
+#include <sys/systm.h>
+
 #include <machine/mk64fx512.h>
 #include <machine/teensy.h>
 #include <machine/intr.h>
@@ -23,27 +29,108 @@
 #ifdef TEENSY35
 
 teensy_gpio_pin teensy_gpio_pins[NPINS] = {
-    {{25, TG_GPIO_A, 5, TG_OUTPUT, 0}},  /* fault */
+    /* tpin, port, pin, dir, pullup, irq trigger, reserved, is led? (early init) */
+    {{25, TG_GPIO_A, 5, TG_OUTPUT, 0, 0, 0, 1}},  /* fault */
 
-    {{26, TG_GPIO_A, 14, TG_OUTPUT, 0}}, /* spl b0 */
-    {{27, TG_GPIO_A, 15, TG_OUTPUT, 0}}, /* spl b1 */
-    {{28, TG_GPIO_A, 16, TG_OUTPUT, 0}}, /* spl b2 */
+    {{26, TG_GPIO_A, 14, TG_OUTPUT, 0, 0, 0, 1}}, /* spl b0 */
+    {{27, TG_GPIO_A, 15, TG_OUTPUT, 0, 0, 0, 1}}, /* spl b1 */
+    {{28, TG_GPIO_A, 16, TG_OUTPUT, 0, 0, 0, 1}}, /* spl b2 */
 
-    {{32, TG_GPIO_B, 11, TG_OUTPUT, 0}}, /* value b3 */
-    {{31, TG_GPIO_B, 10, TG_OUTPUT, 0}}, /* spl b0 */
-    {{30, TG_GPIO_B, 19, TG_OUTPUT, 0}}, /* spl b1 */
-    {{29, TG_GPIO_B, 18, TG_OUTPUT, 0}}, /* spl b2 */
+    {{32, TG_GPIO_B, 11, TG_OUTPUT, 0, 0, 0, 1}}, /* value b3 */
+    {{31, TG_GPIO_B, 10, TG_OUTPUT, 0, 0, 0, 1}}, /* spl b0 */
+    {{30, TG_GPIO_B, 19, TG_OUTPUT, 0, 0, 0, 1}}, /* spl b1 */
+    {{29, TG_GPIO_B, 18, TG_OUTPUT, 0, 0, 0, 1}}, /* spl b2 */
 
-    {{19, TG_GPIO_B, 2, TG_OUTPUT, 0}},  /* value b4 */
-    {{18, TG_GPIO_B, 3, TG_OUTPUT, 0}},  /* value b5 */
-    {{17, TG_GPIO_B, 1, TG_OUTPUT, 0}},  /* value b6 */
-    {{16, TG_GPIO_B, 0, TG_OUTPUT, 0}},  /* value b7 */
+    {{19, TG_GPIO_B, 2, TG_OUTPUT, 0, 0, 0, 1}},  /* value b4 */
+    {{18, TG_GPIO_B, 3, TG_OUTPUT, 0, 0, 0, 1}},  /* value b5 */
+    {{17, TG_GPIO_B, 1, TG_OUTPUT, 0, 0, 0, 1}},  /* value b6 */
+    {{16, TG_GPIO_B, 0, TG_OUTPUT, 0, 0, 0, 1}},  /* value b7 */
     
-    {{13, TG_GPIO_C, 5, TG_OUTPUT, 0}},  /* onboard led */
+    {{13, TG_GPIO_C, 5, TG_OUTPUT, 0, 0, 0, 1}},  /* onboard led */
 
-    {{14, TG_GPIO_D, 1, TG_INPUT, TG_PULLUP}},  /* button */
+    {{14, TG_GPIO_D, 1, TG_INPUT, TG_PULLUP, TG_PCR_IRQ_LOW, 0, 0}},  /* button */
 };
 
+static u_int gpioisrpin[TG_NGPIO];
+static void port_isr(int port);
+
+void portd_isr(void) {
+    port_isr(TG_GPIO_D);
+}
+
+static void port_isr(int port) {
+    volatile u_int *pcr, *isfr;
+    u_int pins, stray;
+    int s, c = 0;
+
+    s = splgpio();
+
+    isfr = TG_ISFR(port);
+
+    /* XOR against the negation of the mask of enabled pins should
+     * be 0. if it isn't, let the operator know and incapacitate the
+     * offender.
+     */
+    pins = *isfr;
+    stray = (pins ^ ~gpioisrpin[port]);
+    if (stray) {
+	do {
+	    if (stray & 1) {
+		pcr = TG_PCR(port, c);
+		printf("gpio: pin %c%d: stray interrupt, disabling\n",
+		       0x41 + port, c); /* 0x41 == 'A' */
+		*pcr &= TG_PCR_IRQ_OFF;
+            }
+	    stray = stray >> 1;
+        } while (c++ < NPINS);
+    }
+
+    if (!gpioisrpin[port])
+	goto out;
+    
+    printf("gpio: pin %c%d: interrupt\n", 0x41 + port, c);
+
+ out:
+    splx(s);
+}
+
+/** Set GPIO port ISR.
+ *
+ * port = TG_GPIO_{A,B,C,D,E}
+ *  pin = 0..31
+ * mode = TG_PCR_IRQ_{OFF,LWO,RISING,FALLING,EITHER,HIGH}
+ */
+void teensy_gpio_set_isr(int port, int pin, int mode) {
+    volatile u_int *pcr;
+    int s;
+
+    s = splgpio();
+
+    arm_disable_irq(TG_GPIO_IRQ(port));
+    
+    if (mode && !(mode & (0x8 << 16))) {
+	printf("gpio: unsupported mode\n");
+    }
+
+    pcr = TG_PCR(port, pin);
+
+    *pcr &= TG_PCR_IRQ_OFF;
+    gpioisrpin[port] &= ~(1 << pin);
+	
+    if (mode) {
+	*pcr |= mode;
+	gpioisrpin[port] |= (1 << pin);
+    }
+
+    /* no point in hammering the isr if there are no
+     * active pins, so only re-enable if it makes sense.
+     */
+    if (gpioisrpin[port]) {
+        arm_enable_irq(TG_GPIO_IRQ(port));
+    }
+
+    splx(s);
+}
 
 /**
  *  RED   YEL   YEL   YEL
@@ -60,9 +147,9 @@ teensy_gpio_pin teensy_gpio_pins[NPINS] = {
 void teensy_gpio_init_pin(teensy_gpio_pin *pin) {
     volatile unsigned int *pddr, *pcr, *pcor;
 
-    pcr = (unsigned int *) (0x40049000 + (pin->port * 0x1000) + (pin->pin * 4));
-    pcor = (unsigned int *) (0x400FF000 + (pin->port * 0x40) + 0x8);
-    pddr = (unsigned int *) (0x400FF000 + (pin->port * 0x40) + 0x14);
+    pcor = TG_PCOR(pin->port);
+    pddr = TG_PDDR(pin->port);
+    pcr = TG_PCR(pin->port, pin->pin);
 
     if (pin->direction == TG_OUTPUT) {
 	*pddr |= (1 << pin->pin);
@@ -78,22 +165,11 @@ void teensy_gpio_init_pin(teensy_gpio_pin *pin) {
     *pcor = (1 << pin->pin);
 }
 
-void teensy_gpio_led_value(int val) {
-    val &= 0xff;
-    GPIOB_PCOR = ((3 << 18) | (3 << 10) | 0xF);
-
-    GPIOB_PSOR = ((val & 0x3) | ((val >> 1) & 0x4) | ((val << 1) & 0x8) | ((val << 14) & (0x3 << 18)) | ((val << 4) & (0x3 << 10)));
-}
-
-void teensy_gpio_led_spl(int val) {
-    val &= 0x7;
-    GPIOA_PCOR = (7 << 14);
-    GPIOA_PSOR = (val << 14);
-}
-
 void teensy_gpio_init(void) {
     for (int i = 0; i < NPINS; i++)
 	teensy_gpio_init_pin(&teensy_gpio_pins[i]);
+    for (int i = 0; i < TG_NGPIO; i++)
+	arm_set_irq_prio(TG_GPIO_IRQ(i), SPL_GPIO);
 }
 
 void teensy_gpio_led_test(void) {
@@ -117,12 +193,12 @@ void teensy_gpio_led_test(void) {
     }
 }
 
-
+#if 0
 void ftm0_isr(void) {
     volatile static unsigned int n;
     int s;
 
-    s = splbio();
+    s = splgpio();
 
     FTM0_SC &= ~FTM_SC_TOF;
     FTM0_CNT = 0;
@@ -136,10 +212,25 @@ void ftm0_isr(void) {
 
     splx(s);
 }
+#endif
 
+static int
+gpioprobe(config)
+     struct conf_device *config;
+{
+    int unit = config->dev_unit;
+    int flags = config->dev_flags;
 
+    if (unit != 0)
+	return 0;
 
+    teensy_gpio_init();
+    return 1;
+}
 
+struct driver gpiodriver = {
+    "gpio", gpioprobe,
+};
 
 #endif /* TEENSY35 */
 

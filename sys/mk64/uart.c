@@ -173,12 +173,13 @@
 #include <machine/kinetis.h>
 #include <machine/intr.h>
 #include <machine/teensy.h>
+#include <machine/systick.h>
 
 #define CONCAT(x, y) x##y
 #define BBAUD(x)     CONCAT(B, x)
 
 #ifndef UART_BAUD
-#define UART_BAUD 115200
+#define UART_BAUD 38400
 #endif
 
 struct uart_inst {
@@ -186,6 +187,9 @@ struct uart_inst {
     u_char rx_pin_num;
     u_char tx_pin_num;
     int fifosz;
+    u_int isrcnt;
+    u_int rxofcnt;
+    u_int txofcnt;
 };
 
 static struct uart_inst uart[NUART] = {
@@ -234,6 +238,10 @@ void uartinit(int unit) {
 
     inst = &uart[unit];
 
+    inst->isrcnt = 0;
+    inst->rxofcnt = 0;
+    inst->txofcnt = 0;
+
     switch (unit) {
     case 0:
         arm_disable_irq(IRQ_UART0_STATUS);
@@ -247,18 +255,16 @@ void uartinit(int unit) {
         arm_disable_irq(IRQ_UART1_STATUS);
         arm_disable_irq(IRQ_UART1_ERROR);
 
-
-            PORTC_PCR3 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
-                          PORT_PCR_MUX(3);
-            PORTC_PCR4 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
-
+	PORTC_PCR3 = PORT_PCR_PE | PORT_PCR_PS | PORT_PCR_PFE |
+	    PORT_PCR_MUX(3);
+	PORTC_PCR4 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
 
     uart01_common:
 	
         /* fixed speed for now. */
 
         inst->regs->BDH    = 0;
-        inst->regs->BDL    = 65; /* 65 = 115200, thus 780 = 9600, means BDH 3, BDL c */
+        inst->regs->BDL    = 0xc0; /* dec 65 = 115200, thus dec 780 = 9600, means BDH 3, BDL c */
         inst->regs->C4     = 0b00011; /* 0b00100 or 0b00011 */
 	inst->regs->C2     = 0;
 	inst->regs->S2     = 0;
@@ -267,8 +273,15 @@ void uartinit(int unit) {
 	inst->regs->C5     = 0;
 
         inst->regs->PFIFO  = UART_PFIFO_TXFE | UART_PFIFO_RXFE;
+	/* interrupt on both overflows but not on receive underflow because of how the UART is
+	 * designed - see quoted comment in interrupt handler
+	 */
+	inst->regs->CFIFO = (UART_CFIFO_TXFLUSH | UART_CFIFO_RXFLUSH);
 
-	inst->fifosz = 64;
+	/* UART_CFIFO_RXUFE - what to do about it? */
+	inst->regs->CFIFO  = (UART_CFIFO_RXOFE | UART_CFIFO_TXOFE); 
+
+	inst->fifosz = 8;
 
         inst->regs->TWFIFO = 1; // tx watermark, causes S1_TDRE to set
         inst->regs->RWFIFO = 4; // rx watermark, causes S1_RDRF to set
@@ -297,9 +310,12 @@ int uartopen(dev_t dev, int flag, int mode) {
     register struct uart_inst *uip;
     register struct tty *tp;
     register int unit = minor(dev);
+    int error, s;
 
     if (unit < 0 || unit >= NUART)
         return (ENXIO);
+
+    s = spltty();
 
     tp = &uartttys[unit];
 
@@ -308,18 +324,24 @@ int uartopen(dev_t dev, int flag, int mode) {
     tp->t_addr = (caddr_t) uip;
     if ((tp->t_state & TS_ISOPEN) == 0) {
         if (tp->t_ispeed == 0) {
-            tp->t_ispeed = B115200; //BBAUD(UART_BAUD);
-            tp->t_ospeed = B115200; //BBAUD(UART_BAUD);
+            tp->t_ispeed = BBAUD(UART_BAUD);
+            tp->t_ospeed = BBAUD(UART_BAUD);
         }
         ttychars(tp);
         tp->t_state = TS_ISOPEN | TS_CARR_ON;
         tp->t_flags =
             ECHO | XTABS | CRMOD | CRTBS | CRTERA | CTLECH | CRTKIL;
     }
-    if ((tp->t_state & TS_XCLUDE) && u.u_uid != 0)
-        return (EBUSY);
+    if ((tp->t_state & TS_XCLUDE) && u.u_uid != 0) {
+        error = (EBUSY);
+	goto out;
+    }
 
-    return ttyopen(dev, tp);
+    error = ttyopen(dev, tp);
+    
+ out:
+    splx(s);
+    return error;
 }
 
 /*ARGSUSED*/
@@ -451,15 +473,18 @@ void uartintr(dev_t dev) {
 
     uip = (struct uart_inst *) &uart[unit];
 
-    /* receive data above watermark or idle line */
-    if ((uip->regs->S1 & (UART_S1_RDRF | UART_S1_IDLE)) || uip->regs->RCFIFO) {
+#ifdef UART_OVERFLOWSTATS
+    uip->isrcnt++;
+#endif
+
+	/* receive data above watermark or idle line */
+    if (uip->regs->S1 & (UART_S1_RDRF | UART_S1_IDLE)) {
         /* disable irqs to avoid ending up back here with the underrun error  */
         arm_disable_irq(IRQ_UART0_STATUS);
         arm_disable_irq(IRQ_UART0_ERROR);
 
         avail = uip->regs->RCFIFO;
         /* next two comment blocks verbatim from original source */
-
         if (avail == 0) {
             /* The only way to clear the IDLE interrupt flag is
 	     * to read the data register.  But reading with no
@@ -467,6 +492,9 @@ void uartintr(dev_t dev) {
 	     * FIFO to return corrupted data.  If anyone from
 	     * Freescale reads this, what a poor design!  There
 	     * write should be a write-1-to-clear for IDLE.
+	     *
+	     * esp: ...but does this matter if RXUFE is 0? let's find out!
+	     *      ...okay, it does. let's not try it again.
 	     */
             c           = uip->regs->D;
             /* flushing the fifo recovers from the underrun,
@@ -480,18 +508,21 @@ void uartintr(dev_t dev) {
 	     * which transmit interrupts are enabled.
 	     */
             UART0_CFIFO = UART_CFIFO_RXFLUSH;
-	    
-            arm_enable_irq(IRQ_UART0_STATUS);
-            arm_enable_irq(IRQ_UART0_ERROR);
+
         } else {
-            arm_enable_irq(IRQ_UART0_STATUS);
-            arm_enable_irq(IRQ_UART0_ERROR);
-
-	    n = uip->regs->D;
-	    ttyinput(n, tp);
-
-	    splx(s);
+            while (avail--) {
+                n = uip->regs->D;
+                ttyinput(n, tp);
+            }
         }
+
+	arm_enable_irq(IRQ_UART0_STATUS);
+	arm_enable_irq(IRQ_UART0_ERROR);
+    }
+    /* update receive overflow counter and clear the flag */
+    if ((uip->regs->SFIFO & UART_SFIFO_RXOF)) {
+	uip->rxofcnt++;
+	uip->regs->SFIFO |= ~UART_SFIFO_RXOF;
     }
     c = uip->regs->C2;
 
@@ -499,11 +530,12 @@ void uartintr(dev_t dev) {
     if ((c & UART_C2_TIE) && (uip->regs->S1 & UART_S1_TDRE)) {
 	avail = uip->regs->S1; /* value not used, part of interrupt clearing dance */
 	
-        if ( 0 && tp->t_outq.c_cc) {
-	    // 	    while (tp->t_outq.c_cc && uip->regs->TCFIFO < (uip->fifosz - 1)) {
-                uip->regs->D = getc(&tp->t_outq);
-		//            };
+        if (0 && tp->t_outq.c_cc) {
+	    //while (tp->t_outq.c_cc && uip->regs->TCFIFO < (uip->fifosz - 1)) {
+		uip->regs->D = getc(&tp->t_outq);
+		//};
         }
+	
 	/* interrupt clearing dance does not seem to happen if there's nothing to send,
 	 * but that's okay as we will stop listening to the interrupt anyway.
 	 */
@@ -515,15 +547,32 @@ void uartintr(dev_t dev) {
     
     /* TC = transmit complete interrupt */
     if ((c & UART_C2_TCIE) && (uip->regs->S1 & UART_S1_TC)) {
+#define UART_OVERFLOWSTATS
+#ifdef UART_OVERFLOWSTATS
+	static u_long last_time;
+#endif
 	/* turn the thing off, then! */
         uip->regs->C2 = C2_TX_INACTIVE;
 
         if (tp->t_state & TS_BUSY) {
             tp->t_state &= ~TS_BUSY;
         }
+	/* ...maybe refill the FIFO here instead? */
 	ttstart(tp);
+#ifdef UART_OVERFLOWSTATS
+        if (!last_time) {
+            last_time = systick_ms;
+        } else if (systick_ms - last_time > 30000 && uip->regs->SFIFO & UART_SFIFO_RXEMPT) {
+	    last_time = systick_ms;
+	    printf("\nuart%d: %d interrupts, %d rx, %d tx overflows\n", unit, uip->isrcnt, uip->rxofcnt, uip->txofcnt);
+        }
+#endif
     }
-
+    if ((uip->regs->SFIFO & UART_SFIFO_TXOF)) {
+	uip->txofcnt++;
+	uip->regs->SFIFO |= ~UART_SFIFO_TXOF;
+    }
+    
     splx(s);
 }
 
@@ -549,9 +598,9 @@ void uartstart(struct tty *tp) {
     if (tp->t_outq.c_cc == 0)
         goto out;
 
+    tp->t_state |= TS_BUSY;
     while(tp->t_outq.c_cc) {
         if (uip->regs->TCFIFO < uip->regs->TWFIFO) {
-            tp->t_state |= TS_BUSY;
             uip->regs->D  = getc(&tp->t_outq);
             uip->regs->C2 = C2_TX_ACTIVE;
         }
@@ -610,17 +659,6 @@ char uartgetc(dev_t dev) {
     return (unsigned char) c;
 }
 
-int uartfifobytes(int b) {
-    int r = 4;
-    
-    if (!b)
-	return 1;
-    for (;b;b--)
-	r *= 4;
-
-    return r;
-}
-
 /*
  * Test to see if device is present.
  * Return true if found and initialized ok.
@@ -645,9 +683,7 @@ static int uartprobe(struct conf_device *config) {
     if (!is_console)
         uartinit(unit);
     
-    printf("uart%d: found, %d tx/%d rx bytes FIFO", unit + 1,
-	   uartfifobytes(((&uart[unit])->regs->PFIFO >> 4) & 0x7),
-	   uartfifobytes(((&uart[unit])->regs->PFIFO >> 4) & 0x7));
+    printf("uart%d: found, %d-byte FIFO", unit + 1, (unit == 0 || unit == 1) ? 8 : 1);
 
     if (is_console)
         printf(", console");

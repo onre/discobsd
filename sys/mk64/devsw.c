@@ -153,11 +153,14 @@ const struct cdevsw cdevsw[] = {
     swcioctl,       nulldev,        0,              seltrue,
     nostrategy,     0,              0,
 },
-
-/*
- * Optional drivers from here on:
+/** cdevsw items:
+ *
+ * open      close    read    write
+ * ioctl     stop     tty     select
+ * strategy
+ *
  */
-{   /* 5 - log */
+{   /* 5 - log - from here on everything is optional */
 #ifdef LOG_ENABLED
     logopen,        logclose,       logread,        norw,
     logioctl,       nulldev,        0,              logselect,

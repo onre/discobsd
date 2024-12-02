@@ -513,6 +513,7 @@ main(argc, argv)
 	char **argv;
 {
 #if 1
+ again:
         /* Trivial init: just start shell. */
         int fd = open(ctty, O_RDWR, 0);
         if (fd < 0)
@@ -525,7 +526,7 @@ main(argc, argv)
         dup2(0, 2);
         execl(shell, minus, (char *)0);
         perror(shell);
-        return 0;
+	goto again;
 #else
 	int howto, oldhowto;
 

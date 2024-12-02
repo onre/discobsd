@@ -102,7 +102,7 @@ dev_t dev;
 int (*dump)(dev_t) = nodump;
 
 dev_t pipedev;
-daddr_t dumplo = (daddr_t) 1024;
+daddr_t dumplo = (daddr_t) 0x1fff0000;
 
 
 /*
@@ -134,7 +134,7 @@ void startup() {
     uartusbinit(CONS_MINOR);
 #endif
 
-    /* boothowto = RB_SINGLE; */
+    boothowto = RB_SINGLE;
 }
 
 static void cpuidentify() {
@@ -297,6 +297,8 @@ void kconfig() {
  */
 void idle() {
     static u_char idling;
+    static u_int when;
+    u_int now = (systick_ms >> 11);
 
     /* Indicate that no process is running. */
     noproc = 1;
@@ -304,11 +306,12 @@ void idle() {
     /* Set SPL low so we can be interrupted. */
     int x  = spl0();
 
-#if 0
-    idling = (idling ? idling + (idling << 1) : 1);
-    
+    if (!idling || !when || when != now) {
+        when   = now;
+        idling = (idling ? (idling << 1) : 1);
+    }
+
     teensy_gpio_led_value(idling);
-#endif
     
     /* Wait for something to happen. */
     dsb();
@@ -476,6 +479,12 @@ void led_control(int mask, int on) {
  */
 void addupc(caddr_t pc, struct uprof *pbuf, int ticks) {
     unsigned indx;
+
+    /**
+     * for some reason this piece of code is causing
+     * bus faults. we'll see about it later.
+     */
+    return;
 
     if (pc < (caddr_t) pbuf->pr_off)
         return;

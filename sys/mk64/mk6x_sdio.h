@@ -21,8 +21,8 @@
 #define MAX_BLKCNT 0XFFFF
 
 #define FIFO_WML 16
-#define CMD8_RETRIES 3
-#define BUSY_TIMEOUT_MS 2000
+#define CMD8_RETRIES 8
+#define BUSY_TIMEOUT_MS 5000
 
 #define SDHC_IRQSTATEN_MASK                                            \
     (SDHC_IRQSTATEN_DMAESEN | SDHC_IRQSTATEN_AC12ESEN |                \

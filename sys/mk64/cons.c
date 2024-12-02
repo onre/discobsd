@@ -64,8 +64,6 @@ void cnputc(char c) {
         ttstart(&cdevsw[CONS_MAJOR].d_ttys[CONS_MINOR]);
         ttyflush(&cdevsw[CONS_MAJOR].d_ttys[CONS_MINOR], 0);
     }
-    if (c == '\n')
-        cnputc('\r');
 }
 
 /*

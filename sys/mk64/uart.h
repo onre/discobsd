@@ -6,6 +6,8 @@
 
 #ifdef KERNEL
 
+#define UART_OVERFLOWSTATS
+
 #define NUART   1
 
 #define C2_ENABLE		UART_C2_TE | UART_C2_RE | UART_C2_RIE | UART_C2_ILIE
