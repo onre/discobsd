@@ -25,6 +25,7 @@ PARAM += -DMAXMEM=112*1024
 PARAM += -DBUS_KHZ=90000
 PARAM += -DCPU_KHZ=180000
 LDSCRIPT = "f469idisco/STM32F469NIHX.ld"
+DEBUG = -g
 #
 # Makefile for DiscoBSD, stm32 target
 #

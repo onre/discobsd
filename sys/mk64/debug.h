@@ -19,6 +19,10 @@
     }
 
 
+#if 0
+#define DEBUG_PRINT_SYSCALLS
+#endif
+
 #define DEBUG(...)
 #define DEBUG1(...)
 #define DEBUG2(...)

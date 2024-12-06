@@ -74,7 +74,9 @@
 
 #ifdef HARDMODE
 
-#define SPL_LEAST     240
+#define SPL_NONE      240
+
+#define SPL_LEAST     224
 #define SPL_SOFTCLOCK 192
 #define SPL_NET       160
 

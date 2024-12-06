@@ -15,6 +15,7 @@ PARAM += -DHALTREBOOT
 PARAM += -DBUS_KHZ=50000
 PARAM += -DCPU_KHZ=100000
 LDSCRIPT = "f411renucleo/STM32F411RETX.ld"
+DEBUG = -g
 #
 # Makefile for DiscoBSD, stm32 target
 #

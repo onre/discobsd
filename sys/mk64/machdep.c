@@ -109,11 +109,13 @@ daddr_t dumplo = (daddr_t) 0x1fff0000;
  * Machine dependent startup code
  */
 void startup() {
+    boothowto = 0;
+    
     mpu_init();
     
     arm_set_system_handler_prio(SYSTICK_HANDLER, SPL_CLOCK);
     arm_set_system_handler_prio(SVCALL_HANDLER, SPL_TOP);   /* syscalls */
-    arm_set_system_handler_prio(PENDSV_HANDLER, SPL_LEAST);  /* there are things involved with this */
+    arm_set_system_handler_prio(PENDSV_HANDLER, SPL_NONE);  /* there are things involved with this */
     
     arm_enable_fault(MM_FAULT_ENABLE);
     arm_enable_fault(BF_FAULT_ENABLE);
@@ -134,7 +136,7 @@ void startup() {
     uartusbinit(CONS_MINOR);
 #endif
 
-    boothowto = RB_SINGLE;
+    /* boothowto = RB_SINGLE; */
 }
 
 static void cpuidentify() {
@@ -296,9 +298,11 @@ void kconfig() {
  * Sit and wait for something to happen...
  */
 void idle() {
+#if IDLE_LED_SHOW
     static u_char idling;
     static u_int when;
     u_int now = (systick_ms >> 11);
+#endif
 
     /* Indicate that no process is running. */
     noproc = 1;
@@ -306,12 +310,14 @@ void idle() {
     /* Set SPL low so we can be interrupted. */
     int x  = spl0();
 
+#if IDLE_LED_SHOW
     if (!idling || !when || when != now) {
         when   = now;
         idling = (idling ? (idling << 1) : 1);
     }
 
     teensy_gpio_led_value(idling);
+#endif
     
     /* Wait for something to happen. */
     dsb();

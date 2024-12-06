@@ -60,7 +60,7 @@ card_size(int unit)
 int
 card_read(int unit, unsigned int offset, char *data, unsigned int bcount)
 {
-    int nblocks;
+    int nblocks, state;
 
     if ((bcount % SECTSIZE) == 0) {
         nblocks = bcount / SECTSIZE;
@@ -69,16 +69,17 @@ card_read(int unit, unsigned int offset, char *data, unsigned int bcount)
         nblocks = (bcount / SECTSIZE) + 1;
     }
 #if 0    
-    DEBUG("card_read:  bcount: %d\tnblocks: %d\tbcount \% %d: %d\n",
+    DEBUG("sdio:  bcount: %d\tnblocks: %d\tbcount \% %d: %d\n",
       bcount, nblocks, SECTSIZE, bcount % SECTSIZE);
 #endif
 
-    if (!mk6x_sdio_readSectors(offset<<1, data, nblocks)) {
-	printf("card_read: read failed: %d\n", mk6x_sdio_errorCode());
-        return 0;
+    state = mk6x_sdio_readSectors(offset<<1, data, nblocks);
+    
+    if (!state) {
+	printf("sd%d: read error: %d\n", unit, mk6x_sdio_errorCode());
     }
 
-    return 1;
+    return state;
 }
 
 /*
@@ -101,7 +102,13 @@ card_write(int unit, unsigned offset, char *data, unsigned bcount)
       bcount, nblocks, SECTSIZE, bcount % SECTSIZE);
 #endif
     s = splbio();
+
     state = mk6x_sdio_writeSectors(offset<<1, (void *)data, nblocks);
+
+    if (!state) {
+	printf("sd%d: write error: %d\n", unit, mk6x_sdio_errorCode());
+	goto out;
+    }
 
 #if 0
     /* Wait for write completion. */
@@ -110,14 +117,12 @@ card_write(int unit, unsigned offset, char *data, unsigned bcount)
         ;
     splx(x);
 
-    if (SD_state != BSP_SD_OK) {
-        printf("card_write: write failed\n");
-        return 0;
-    }
 #endif
+
+ out:
     splx(s);
 
-    return 1;
+    return state;
 }
 
 /*

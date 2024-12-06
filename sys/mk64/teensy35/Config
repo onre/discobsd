@@ -37,8 +37,8 @@ config          unix    root on sd0a
 # Serial UART ports
 
 #device           uartusb1                    # Teensy virtual USB UART
-device           uart1                       # rx pin 0, tx pin 1
-#device          uart2                       # USART2 as console
+device           uart1
+# device           uart2
 #device          uart3                       # USART3
 #device          uart4                       # UART4
 #device          uart5                       # UART5
@@ -53,4 +53,4 @@ controller      sdio0
 device          sd0     at sdio0             # SD card uses SDIO
 options         "NSD=1"                     # One disk on SDIO
 
-options         "TEENSY_LED_KERNEL"	    # LED is always on pin 13 aka PORTC5
+device		gpio0

@@ -23,8 +23,6 @@
 #include <sys/stat.h>
 #include <sys/kconfig.h>
 
-#include <machine/systick.h>
-
 u_int   swapstart, nswap;   /* start and size of swap space */
 size_t  physmem;            /* total amount of physical memory */
 int     boothowto;          /* reboot flags, from boot */
@@ -178,7 +176,6 @@ main()
     printf ("swap dev  = (%d,%d)\n", major(swapdev), minor(swapdev));
     printf ("root size = %u kbytes\n", fs->fs_fsize * DEV_BSIZE / 1024);
     printf ("swap size = %u kbytes\n", nswap * DEV_BSIZE / 1024);
-    printf ("alive for = %u ms\n", systick_ms);
 
     /* Kick off timeout driven events by calling first time. */
     schedcpu (0);

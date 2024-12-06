@@ -25,30 +25,190 @@
 #include <machine/intr.h>
 #include <machine/debug.h>
 
-#ifdef GLOBAL_DEBUG
-static void print_arg(val) {
-    if (val & 0xff000000)
+#ifdef DEBUG_PRINT_SYSCALLS
+u_char scstrarg[] = {
+    0,            /*   0 = indir */
+    0,             /*   1 = exit */
+    0,             /*   2 = fork */
+    0,             /*   3 = read */
+    0,            /*   4 = write */
+    1,             /*   5 = open */
+    0,            /*   6 = close */
+    0,            /*   7 = wait4 */
+    0,               /*   8 = (old creat) */
+    3,             /*   9 = link */
+    1,           /*  10 = unlink */
+    1,            /*  11 = execv */
+    1,            /*  12 = chdir */
+    0,           /*  13 = fchdir */
+    1,            /*  14 = mknod */
+    1,            /*  15 = chmod */
+    1,            /*  16 = chown; now 3 args */
+    1,          /*  17 = chflags */
+    0,         /*  18 = fchflags */
+    0,            /*  19 = lseek */
+    0,           /*  20 = getpid */
+    3,            /*  21 = mount */
+    0,           /*  22 = umount */
+    0,         /*  23 = __sysctl */
+    0,           /*  24 = getuid */
+    0,          /*  25 = geteuid */
+    0,           /*  26 = ptrace */
+    0,          /*  27 = getppid */
+    1,           /*  28 = statfs */
+    0,          /*  29 = fstatfs */
+    0,        /*  30 = getfsstat */
+    0,        /*  31 = sigaction */
+    0,      /*  32 = sigprocmask */
+    1,           /*  33 = access */
+    0,       /*  34 = sigpending */
+    0,      /*  35 = sigaltstack */
+    0,             /*  36 = sync */
+    0,             /*  37 = kill */
+    1,             /*  38 = stat */
+    0,         /*  39 = getlogin */
+    1,            /*  40 = lstat */
+    0,              /*  41 = dup */
+    0,             /*  42 = pipe */
+    1,         /*  43 = setlogin */
+    0,           /*  44 = profil */
+    0,           /*  45 = setuid */
+    0,          /*  46 = seteuid */
+    0,           /*  47 = getgid */
+    0,          /*  48 = getegid */
+    0,           /*  49 = setgid */
+    0,          /*  50 = setegid */
+    0,          /*  51 = kmemdev  */
+    0,             /*  52 = (2.9) set phys addr */
+    0,             /*  53 = (2.9) lock in core */
+    0,            /*  54 = ioctl */
+    0,           /*  55 = reboot */
+    0,          /*  56 = sigwait */
+    3,          /*  57 = symlink */
+    1,         /*  58 = readlink */
+    1,           /*  59 = execve */
+    0,            /*  60 = umask */
+    1,           /*  61 = chroot */
+    0,            /*  62 = fstat */
+    0,              /*  63 = unused */
+    0,              /*  64 = (old getpagesize) */
+    0,          /*  65 = pselect */
+    0,            /*  66 = vfork */
+    0,              /*  67 = unused */
+    0,              /*  68 = unused */
+    0,              /*  69 = brk */
+    0,           /*  70 = read from global space */
+    0,           /*  71 = write to global space */
+    0,             /*  72 = kticks */
+    0,              /*  73 = unused */
+    0,              /*  74 = unused */
+    0,              /*  75 = unused */
+    0,          /*  76 = vhangup */
+    0,              /*  77 = unused */
+    0,              /*  78 = unused */
+    0,        /*  79 = getgroups */
+    0,        /*  80 = setgroups */
+    0,          /*  81 = getpgrp */
+    0,          /*  82 = setpgrp */
+    0,        /*  83 = setitimer */
+    0,         /*  84 = wait,wait3 COMPAT*/
+    0,              /*  85 = unused */
+    0,        /*  86 = getitimer */
+    0,              /*  87 = (old gethostname) */
+    0,              /*  88 = (old sethostname) */
+    0,    /*  89 = getdtablesize */
+    0,             /*  90 = dup2 */
+    0,              /*  91 = unused */
+    0,            /*  92 = fcntl */
+    0,           /*  93 = select */
+    0,              /*  94 = unused */
+    0,            /*  95 = fsync */
+    0,      /*  96 = setpriority */
+    0,           /*  97 = socket */
+    0,          /*  98 = connect */
+    0,           /*  99 = accept */
+    0,      /* 100 = getpriority */
+    0,             /* 101 = send */
+    0,             /* 102 = recv */
+    0,        /* 103 = sigreturn */
+    0,             /* 104 = bind */
+    0,       /* 105 = setsockopt */
+    0,           /* 106 = listen */
+    0,       /* 107 = sigsuspend */
+    0,             /* 108 = (old sigvec) */
+    0,             /* 109 = (old sigblock) */
+    0,             /* 110 = (old sigsetmask) */
+    0,             /* 111 = (old sigpause)  */
+    0,         /* 112 = sigstack COMPAT-43 */
+    0,          /* 113 = recvmsg */
+    0,          /* 114 = sendmsg */
+    0,             /* 115 = unused */
+    0,     /* 116 = gettimeofday */
+    0,        /* 117 = getrusage */
+    0,       /* 118 = getsockopt */
+    0,             /* 119 = unused */
+    0,            /* 120 = readv */
+    0,           /* 121 = writev */
+    0,     /* 122 = settimeofday */
+    0,           /* 123 = fchown */
+    0,           /* 124 = fchmod */
+    0,         /* 125 = recvfrom */
+    0,             /* 126 = (old setreuid) */
+    0,             /* 127 = (old setregid) */
+    0,           /* 128 = rename */
+    0,         /* 129 = truncate */
+    0,        /* 130 = ftruncate */
+    0,            /* 131 = flock */
+    0,             /* 132 = unused */
+    0,           /* 133 = sendto */
+    0,         /* 134 = shutdown */
+    0,       /* 135 = socketpair */
+    0,            /* 136 = mkdir */
+    0,            /* 137 = rmdir */
+    0,           /* 138 = utimes */
+    0,             /* 139 = unused */
+    0,          /* 140 = adjtime */
+    0,      /* 141 = getpeername */
+    0,             /* 142 = (old gethostid) */
+    0,             /* 143 = (old sethostid) */
+    0,        /* 144 = getrlimit */
+    0,        /* 145 = setrlimit */
+    0,           /* 146 = killpg */
+    0,             /* 147 = unused */
+    0,         /* 148 = setquota */
+    0,            /* 149 = quota */
+    0,      /* 150 = getsockname */
+    0,             /* 151 = unused */
+    0,           /* 152 = ustore */
+    0,           /* 153 = ufetch */
+    0,            /* 154 = ucall */
+    0             /* 155 = unused */
+    
+};
+
+static void
+print_args(int code, int narg, int arg0, int arg1, int arg2, int arg3,
+           int arg4, int arg5);
+static void print_arg(int val, int code, int n);
+
+static void print_arg(int val, int code, int n) {
+    if (code < 155 && (scstrarg[code] & (1 << n)))
+	printf("\"%s\"", val);
+    else if (val & 0xff000000)
 	printf("%08x", val);
     else
 	printf("%u", val);
 }
 
 static void
-print_args(narg, arg0, arg1, arg2, arg3, arg4, arg5)
+print_args(int code, int narg, int arg0, int arg1, int arg2, int arg3, int arg4, int arg5)
 {
-    void print_arg(val) {
-        if (val & 0xff000000)
-            printf("%08x", val);
-        else
-            printf("%u", val);
-    }
-
-    print_arg(arg0);
-    if (narg > 1) { printf(", "); print_arg(arg1); }
-    if (narg > 2) { printf(", "); print_arg(arg2); }
-    if (narg > 3) { printf(", "); print_arg(arg3); }
-    if (narg > 4) { printf(", "); print_arg(arg4); }
-    if (narg > 5) { printf(", "); print_arg(arg5); }
+    print_arg(arg0, code, 0);
+    if (narg > 1) { printf(", "); print_arg(arg1, code, 1); }
+    if (narg > 2) { printf(", "); print_arg(arg2, code, 2); }
+    if (narg > 3) { printf(", "); print_arg(arg3, code, 3); }
+    if (narg > 4) { printf(", "); print_arg(arg4, code, 4); }
+    if (narg > 5) { printf(", "); print_arg(arg5, code, 5); }
 }
 #endif
 
@@ -187,8 +347,6 @@ void syscall(struct trapframe *frame) {
     cnt.v_syscall++;
 #endif
 
-    (void) arm_enable_interrupts();
-
     u.u_error = 0;
     u.u_frame = frame;
     u.u_code =
@@ -201,8 +359,8 @@ void syscall(struct trapframe *frame) {
     if (sp < u.u_procp->p_daddr + u.u_dsize) {
         /* Process has trashed its stack; give it an illegal
 	 * instruction violation to halt it in its tracks. */
-#ifdef GLOBAL_DEBUG
-	DEBUG("\tsyscall(pid %u): bad stack: sp = 0x%08x daddr = 0x0%08x dsize = 0x%08x, sending SEGV\n",
+#ifdef DEBUG_PRINT_SYSCALLS
+	printf("\tsyscall[%u]: bad stack: sp = 0x%08x daddr = 0x0%08x dsize = 0x%08x, sending SEGV\n",
 	      u.u_procp->p_pid, sp, u.u_procp->p_daddr, u.u_dsize);
 #endif
         psig = SIGSEGV;
@@ -249,13 +407,13 @@ void syscall(struct trapframe *frame) {
     }
     u.u_rval = 0;
 
-#ifdef GLOBAL_DEBUG
-    DEBUG("\tsyscall(pid %u): %s (", u.u_procp->p_pid,
+#ifdef DEBUG_PRINT_SYSCALLS
+    printf("\tsyscall[%u]: %s (", u.u_procp->p_pid,
             syscallnames [code >= nsysent ? 0 : code]);
     if (callp->sy_narg > 0)
-	print_args(callp->sy_narg, u.u_arg[0], u.u_arg[1],
+	print_args(code, callp->sy_narg, u.u_arg[0], u.u_arg[1],
 		   u.u_arg[2], u.u_arg[3], u.u_arg[4], u.u_arg[5]);
-    DEBUG(")\n"); /* was: ") at %08x\n", pc); */
+    printf(")"); /* was: ") at %08x\n", pc); */
 #endif
     
     if (setjmp(&u.u_qsave) == 0) {
@@ -277,13 +435,32 @@ void syscall(struct trapframe *frame) {
         u.u_frame->tf_r0 = u.u_error; /* $a1 - result. */
         break;
     }
+#ifdef DEBUG_PRINT_SYSCALLS
+    switch (u.u_error) {
+    case ERESTART:
+	printf(" -> restart");
+        break;
+    case EJUSTRETURN: /* Return from sig handler. */
+	printf(" -> just return");
+        break;
+    default:
+        printf(" = %u", u.u_frame->tf_r0);
+        break;
+    }
+    printf("\n");
+#endif
+
     goto out;
 
 bad:
     /* From this point and further the interrupts must be enabled. */
+    (void) arm_enable_interrupts();
+
     psignal(u.u_procp, psig);
 
 out:
+    (void) arm_enable_interrupts();
+
     userret(u.u_frame->tf_pc, syst);
 
     led_control(LED_KERNEL, 0);

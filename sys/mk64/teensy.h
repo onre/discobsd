@@ -15,6 +15,8 @@ extern uint32_t _sdata;
 
 #ifdef TEENSY35
 
+#define IDLE_LED_SHOW 1
+
 #define NPINS               14
 
 #define SPL_GPIO            SPL_BIO
@@ -43,9 +45,9 @@ extern uint32_t _sdata;
 #define TG_PCR_PIN_OUTPUT                                              \
     (PORT_PCR_MUX(1) | PORT_PCR_DSE | PORT_PCR_SRE)
 #define TG_PCR_PIN_INPUT   (PORT_PCR_MUX(1))
-#define TG_PCR_PIN_PULLUP  (PORT_PCR_PS | PORT_PCR_PE)
+#define TG_PCR_PIN_PULLUP  (PORT_PCR_MUX(1) | PORT_PCR_PS | PORT_PCR_PE)
 
-#define TG_PCR_IRQ_OFF     ~(0xF << 16)
+#define TG_PCR_IRQ_OFF     ~(0xf << 16)
 #define TG_PCR_IRQ_LOW     0x8
 #define TG_PCR_IRQ_RISING  0x9
 #define TG_PCR_IRQ_FALLING 0xa
@@ -86,7 +88,7 @@ extern teensy_gpio_pin teensy_gpio_pins[NPINS];
 #define TG_PCR(ptnm, pnnm)                                             \
     (volatile u_int *) (TG_PCR_BASE + (ptnm * 0x1000) + (pnnm * 4))
 #define TG_ISFR(ptnm)                                                  \
-    (volatile u_int *) (TG_PORT_BASE + (ptnm * 0x40) + 0xa0)
+    (volatile u_int *) (TG_PCR_BASE + (ptnm * 0x1000) + 0xa0)
 
 #define LED_FAULT   teensy_gpio_pins[0]
 #define LED_ONBOARD teensy_gpio_pins[NPINS - 2]

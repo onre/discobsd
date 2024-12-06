@@ -580,7 +580,7 @@ void early_irq_init(void) {
 }
 
 
-#if defined(__PURE_CODE__) || !defined(__OPTIMIZE__) || defined(__clang__)
+#if defined(__PURE_CODE__) || !defined(__OPTIMIZE__) || defined(__clang__) || 0
 // cases known to compile too large for 0-0x400 memory region
 __attribute__ ((optimize("-Os")))
 #else
@@ -595,10 +595,10 @@ void ResetHandler(void)
 
 	WDOG_UNLOCK = WDOG_UNLOCK_SEQ1;
 	WDOG_UNLOCK = WDOG_UNLOCK_SEQ2;
-	__asm__ volatile ("nop");
-	__asm__ volatile ("nop");
+	asm volatile ("nop");
+	asm volatile ("nop");
 
-	__asm__ volatile ("ldr     sp, =_estack");
+	asm volatile ("ldr     sp, =_estack");
 
 	WDOG_STCTRLH = WDOG_STCTRLH_ALLOWUPDATE;
 
@@ -963,23 +963,25 @@ void ResetHandler(void)
 	 */
 
 	main();
-	__asm__ volatile("cpsid i");
-	__asm__ volatile("movs r0, #0");
-	__asm__ volatile("msr BASEPRI, r0");
-	__asm__ volatile("ldr r0, =__user_data_end");
-	__asm__ volatile("msr PSP, r0");
-	__asm__ volatile("isb");
-	__asm__ volatile("mrs r0, CONTROL"); /* ...thus ARM is guaranteed to start in supervisor mode?
+	asm volatile("cpsid i");
+	asm volatile("movs r0, #0");
+	asm volatile("msr BASEPRI, r0");
+	asm volatile("ldr r0, =__user_data_end");
+	asm volatile("msr PSP, r0");
+	asm volatile("isb");
+	asm volatile("dsb");
+	asm volatile("mrs r0, CONTROL"); /* ...thus ARM is guaranteed to start in supervisor mode?
 				 * I suppose that's the only sensible way.
 				 */
-	__asm__ volatile("orrs r0, r0, #0x1");
-	__asm__ volatile("orrs r0, r0, #0x2");
-	__asm__ volatile("cpsie i");
-	__asm__ volatile("msr CONTROL, r0");
-	__asm__ volatile("isb");
+	asm volatile("orrs r0, r0, #0x1");
+	asm volatile("orrs r0, r0, #0x2");
+	asm volatile("cpsie i");
+	asm volatile("msr CONTROL, r0");
+	asm volatile("isb");
+	asm volatile("dsb");
 
-	__asm__ volatile("ldr lr,=__user_data_start+1");
-	__asm__ volatile("bx lr");
+	asm volatile("ldr lr,=__user_data_start+1");
+	asm volatile("bx lr");
 
 	/* fault blinks @~2 Hz, spl counts 0-7 */
 	

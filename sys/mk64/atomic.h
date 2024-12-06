@@ -23,7 +23,7 @@ static __inline__ unsigned int __get_primask(void)
     __attribute__((always_inline));
 static __inline__ unsigned int __get_primask(void) {
     unsigned int primask = 0;
-    __asm__ volatile("MRS %[result], PRIMASK\n\t"
+    asm volatile("MRS %[result], PRIMASK\n\t"
                      : [result] "=r"(primask)::);
     return primask;
 } // returns 0 if interrupts enabled, 1 if disabled
@@ -31,35 +31,35 @@ static __inline__ unsigned int __get_primask(void) {
 static __inline__ void __set_primask(unsigned int setval)
     __attribute__((always_inline));
 static __inline__ void __set_primask(unsigned int setval) {
-    __asm__ volatile("MSR PRIMASK, %[value]\n\t"
+    asm volatile("MSR PRIMASK, %[value]\n\t"
                      "dmb\n\t"
                      "dsb\n\t"
                      "isb\n\t" ::[value] "r"(setval)
                      :);
-    __asm__ volatile("" ::: "memory");
+    asm volatile("" ::: "memory");
 }
 
 static __inline__ void __enable_irq_set_barrier(void);
 static __inline__ void __enable_irq_set_barrier(void) {
-    __asm__ volatile("CPSIE i");
-    __asm__ volatile("dmb");
-    __asm__ volatile("dsb");
-    __asm__ volatile("isb");
+    asm volatile("CPSIE i");
+    asm volatile("dmb");
+    asm volatile("dsb");
+    asm volatile("isb");
 }
 
 static __inline__ void __set_barrier(void);
 static __inline__ void __set_barrier(void) {
-    __asm__ volatile("dmb");
-    __asm__ volatile("dsb");
-    __asm__ volatile("isb");
+    asm volatile("dmb");
+    asm volatile("dsb");
+    asm volatile("isb");
 }
 
 static __inline__ void __disable_irq_set_barrier(void);
 static __inline__ void __disable_irq_set_barrier(void) {
-    __asm__ volatile("CPSID i");
-    __asm__ volatile("dmb");
-    __asm__ volatile("dsb");
-    __asm__ volatile("isb");
+    asm volatile("CPSID i");
+    asm volatile("dmb");
+    asm volatile("dsb");
+    asm volatile("isb");
 }
 
 
@@ -67,44 +67,44 @@ static __inline__ void __disable_irq_set_barrier(void) {
 static __inline__ unsigned int __iSeiRetVal(void)
     __attribute__((always_inline));
 static __inline__ unsigned int __iSeiRetVal(void) {
-    __asm__ volatile("CPSIE i\n\t"
+    asm volatile("CPSIE i\n\t"
                      "dmb\n\t"
                      "dsb\n\t"
                      "isb\n\t");
-    __asm__ volatile("" ::: "memory");
+    asm volatile("" ::: "memory");
     return 1;
 }
 
 static __inline__ unsigned int __iCliRetVal(void)
     __attribute__((always_inline));
 static __inline__ unsigned int __iCliRetVal(void) {
-    __asm__ volatile("CPSID i\n\t"
+    asm volatile("CPSID i\n\t"
                      "dmb\n\t"
                      "dsb\n\t"
                      "isb\n\t");
-    __asm__ volatile("" ::: "memory");
+    asm volatile("" ::: "memory");
     return 1;
 }
 
 static __inline__ void __iSeiParam(const unsigned int *__s)
     __attribute__((always_inline));
 static __inline__ void __iSeiParam(const unsigned int *__s) {
-    __asm__ volatile("CPSIE i\n\t"
+    asm volatile("CPSIE i\n\t"
                      "dmb\n\t"
                      "dsb\n\t"
                      "isb\n\t");
-    __asm__ volatile("" ::: "memory");
+    asm volatile("" ::: "memory");
     (void) __s;
 }
 
 static __inline__ void __iCliParam(const unsigned int *__s)
     __attribute__((always_inline));
 static __inline__ void __iCliParam(const unsigned int *__s) {
-    __asm__ volatile("CPSID i\n\t"
+    asm volatile("CPSID i\n\t"
                      "dmb\n\t"
                      "dsb\n\t"
                      "isb\n\t");
-    __asm__ volatile("" ::: "memory");
+    asm volatile("" ::: "memory");
     (void) __s;
 }
 
@@ -112,7 +112,7 @@ static __inline__ void __iRestore(const unsigned int *__s)
     __attribute__((always_inline));
 static __inline__ void __iRestore(const unsigned int *__s) {
     __set_primask(*__s);
-    __asm__ volatile("" ::: "memory");
+    asm volatile("" ::: "memory");
 }
 
 

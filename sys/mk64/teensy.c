@@ -22,9 +22,12 @@
 #include <sys/types.h>
 #include <sys/systm.h>
 
+#include <sys/vmmeter.h>
+
 #include <machine/mk64fx512.h>
 #include <machine/teensy.h>
 #include <machine/intr.h>
+#include <machine/systick.h>
 
 #ifdef TEENSY35
 
@@ -48,47 +51,38 @@ teensy_gpio_pin teensy_gpio_pins[NPINS] = {
     
     {{13, TG_GPIO_C, 5, TG_OUTPUT, 0, 0, 0, 1}},  /* onboard led */
 
-    {{14, TG_GPIO_D, 1, TG_INPUT, TG_PULLUP, TG_PCR_IRQ_LOW, 0, 0}},  /* button */
+    {{14, TG_GPIO_D, 1, TG_INPUT, TG_PULLUP, TG_PCR_IRQ_HIGH, 0, 0}},  /* button */
 };
 
 static u_int gpioisrpin[TG_NGPIO];
 static void port_isr(int port);
+static int late;
+
 
 void portd_isr(void) {
     port_isr(TG_GPIO_D);
 }
 
 static void port_isr(int port) {
-    volatile u_int *pcr, *isfr;
-    u_int pins, stray;
+    volatile u_int *isfr;
+    u_int pins;
     int s, c = 0;
 
     s = splgpio();
-
     isfr = TG_ISFR(port);
 
-    /* XOR against the negation of the mask of enabled pins should
-     * be 0. if it isn't, let the operator know and incapacitate the
-     * offender.
-     */
-    pins = *isfr;
-    stray = (pins ^ ~gpioisrpin[port]);
-    if (stray) {
-	do {
-	    if (stray & 1) {
-		pcr = TG_PCR(port, c);
-		printf("gpio: pin %c%d: stray interrupt, disabling\n",
-		       0x41 + port, c); /* 0x41 == 'A' */
-		*pcr &= TG_PCR_IRQ_OFF;
-            }
-	    stray = stray >> 1;
-        } while (c++ < NPINS);
-    }
+    pins = *isfr & gpioisrpin[port];
 
-    if (!gpioisrpin[port])
+    if (!pins)
 	goto out;
     
-    printf("gpio: pin %c%d: interrupt\n", 0x41 + port, c);
+    do {
+	if (*isfr & (1 << c)) {
+	    /* printf("gpio: pin %c%d: interrupt\n", 0x41 + port, c);*/
+	    printf("%12d  si %d so %d \n", systick_ms, cnt.v_swpin, cnt.v_swpout);
+	    *isfr |= (1 << c);
+	}
+    } while (c++ < TG_GPIO_PINMAX);
 
  out:
     splx(s);
@@ -98,7 +92,7 @@ static void port_isr(int port) {
  *
  * port = TG_GPIO_{A,B,C,D,E}
  *  pin = 0..31
- * mode = TG_PCR_IRQ_{OFF,LWO,RISING,FALLING,EITHER,HIGH}
+ * mode = TG_PCR_IRQ_{OFF,LOW,RISING,FALLING,EITHER,HIGH}
  */
 void teensy_gpio_set_isr(int port, int pin, int mode) {
     volatile u_int *pcr;
@@ -108,7 +102,7 @@ void teensy_gpio_set_isr(int port, int pin, int mode) {
 
     arm_disable_irq(TG_GPIO_IRQ(port));
     
-    if (mode && !(mode & (0x8 << 16))) {
+    if (mode && !(mode & 0x8)) {
 	printf("gpio: unsupported mode\n");
     }
 
@@ -118,7 +112,8 @@ void teensy_gpio_set_isr(int port, int pin, int mode) {
     gpioisrpin[port] &= ~(1 << pin);
 	
     if (mode) {
-	*pcr |= mode;
+	*pcr |= (mode << 16);
+	printf("gpio: pin %c%d: interrupt enabled\n", 0x41 + port, pin);
 	gpioisrpin[port] |= (1 << pin);
     }
 
@@ -147,29 +142,41 @@ void teensy_gpio_set_isr(int port, int pin, int mode) {
 void teensy_gpio_init_pin(teensy_gpio_pin *pin) {
     volatile unsigned int *pddr, *pcr, *pcor;
 
+    if (!late && !pin->is_led)
+	return;
+    if (late && pin->is_led)
+	return;
+    
     pcor = TG_PCOR(pin->port);
     pddr = TG_PDDR(pin->port);
     pcr = TG_PCR(pin->port, pin->pin);
 
     if (pin->direction == TG_OUTPUT) {
 	*pddr |= (1 << pin->pin);
-	*pcr = TG_PCR_PIN_OUTPUT | (pin->interrupt << 16);
+	*pcr = TG_PCR_PIN_OUTPUT;
+	*pcor = (1 << pin->pin);
     } else {
 	*pddr &= ~(1 << pin->pin);
         if (pin->pullup == TG_PULLUP) {
-	    *pcr = TG_PCR_PIN_INPUT | TG_PCR_PIN_PULLUP | (pin->interrupt << 16);
+	    *pcr = TG_PCR_PIN_PULLUP;
         } else {
-	    *pcr = (TG_PCR_PIN_INPUT & ~PORT_PCR_PE) | (pin->interrupt << 16);
+	    *pcr = TG_PCR_PIN_INPUT;
         }
     }
-    *pcor = (1 << pin->pin);
+
+    if (pin->interrupt)
+	teensy_gpio_set_isr(pin->port, pin->pin, pin->interrupt);
 }
 
 void teensy_gpio_init(void) {
+    if (late)
+	for (int i = 0; i < TG_NGPIO; i++)
+	    arm_set_irq_prio(TG_GPIO_IRQ(i), SPL_GPIO);
+
     for (int i = 0; i < NPINS; i++)
-	teensy_gpio_init_pin(&teensy_gpio_pins[i]);
-    for (int i = 0; i < TG_NGPIO; i++)
-	arm_set_irq_prio(TG_GPIO_IRQ(i), SPL_GPIO);
+            teensy_gpio_init_pin(&teensy_gpio_pins[i]);
+
+    late = 1;
 }
 
 void teensy_gpio_led_test(void) {
@@ -224,6 +231,8 @@ gpioprobe(config)
     if (unit != 0)
 	return 0;
 
+    printf("gpio: alive\n");
+    
     teensy_gpio_init();
     return 1;
 }

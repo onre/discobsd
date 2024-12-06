@@ -44,12 +44,16 @@ static inline void arm_attach_isr(enum IRQ_NUMBER_t irq,
  * it is not this simple. see nvic_execution_priority() for details.
  */
 
-#if 0
-static __inline unsigned int
+#if 1
+static inline unsigned int
 get_basepri(void) {
     unsigned int result;
     asm volatile("mrs %0, basepri" : "=r" (result));
     return result;
+}
+#else
+static inline unsigned int get_basepri(void) {
+    return !!nvic_execution_priority();
 }
 #endif
 
@@ -61,29 +65,25 @@ get_basepri(void) {
 #define PENDSV_HANDLER 14
 #define SYSTICK_HANDLER 15
 
-static __inline unsigned int get_basepri(void) {
-    return !!nvic_execution_priority();
-}
-
-static __inline void
+static inline void
 set_basepri(unsigned int value) {
     asm volatile("msr basepri, %0" :: "r" (value) : "memory");
 }
 
-static __inline void
+static inline void
 set_basepri_max(unsigned int value) {
     asm volatile("msr basepri_max, %0" :: "r" (value) : "memory");
 }
 
-static __inline void isb(void) {
+static inline void isb(void) {
     asm volatile("isb 0xF" ::: "memory");
 }
 
-static __inline void dsb(void) {
+static inline void dsb(void) {
     asm volatile("dsb");
 }
 
-static __inline void wfi(void) {
+static inline void wfi(void) {
     asm volatile("wfi");
 }
 

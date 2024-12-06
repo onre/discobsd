@@ -2,6 +2,7 @@
 #define _SD_H
 
 #include <sys/disk.h>
+#include <sys/types.h>
 
 #include <machine/sd_card_info.h>
 

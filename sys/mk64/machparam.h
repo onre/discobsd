@@ -12,16 +12,6 @@
 #error can not define USB_DISABLED and USB_SERIAL simultaneously
 #endif
 
-#ifdef SIMPLE_INTERRUPTS
-#ifdef SET_DEFAULT_INTERRUPT_PRIORITY
-#undef SET_DEFAULT_INTERRUPT_PRIORITY
-#endif
-#else
-#ifndef SET_DEFAULT_INTERRUPT_PRIORITY
-#define SET_DEFAULT_INTERRUPT_PRIORITY
-#endif
-#endif
-
 /*
  * SIMPLE_INTERRUPTS - preset all interrupts to equal priority in startup code and then
  * make sure none of the kernel code changes any of those priorities.
@@ -31,6 +21,7 @@
 
 #ifdef SIMPLE_INTERRUPTS
 
+#define SET_DEFAULT_INTERRUPT_PRIORITY
 #define SPL_DEFAULT 128
 
 #define SPL_LEAST     SPL_DEFAULT
@@ -163,15 +154,6 @@
 #define BASEPRI(psr)  get_basepri()
 
 #define noop()        asm volatile("nop")
-
-/**
- *  the handy debugging method
- */
-
-#define LED_AND_DEATH()                                                \
-    GPIOC_PSOR = (1 << 5);                                             \
-    while (1)                                                          \
-        ;
 
 /*
  * Wait for something to happen.

@@ -187,14 +187,23 @@ struct uart_inst {
     u_char rx_pin_num;
     u_char tx_pin_num;
     int fifosz;
+    /* interrupt tally */
     u_int isrcnt;
+    u_int errisrcnt;
+    /* overflows */
     u_int rxofcnt;
     u_int txofcnt;
+    /* other interrupts by type */
+    u_int tdrecnt; 
+    u_int tccnt;
+    u_int rdrfcnt;
+    u_int idlecnt;
 };
 
 static struct uart_inst uart[NUART] = {
 #ifdef TEENSY35
     {&KINETISK_UART0, 16, 17},
+    {&KINETISK_UART1, 3, 4},
 #endif
 };
 
@@ -219,31 +228,42 @@ void uart0_status_isr(void) {
         uartintr(makedev(UART_MAJOR, 0));
     }
 }
+
 void uart0_error_isr(void) {
-    if (alive == 1) {
-        uartintr(makedev(UART_MAJOR, 0));
+    if (alive == 1)
+	uart[0].errisrcnt++;
+}
+
+void uart1_status_isr(void) {
+    if (alive == (1 << 1)) {
+        uartintr(makedev(UART_MAJOR, 1));
     }
+}
+
+void uart1_error_isr(void) {
+    if (alive == (1 << 1))
+	uart[1].errisrcnt++;
 }
 
 void uartinit(int unit) {
     register struct uart_inst *inst;
     int divisor;
 
-    SIM_SCGC4 |= SIM_SCGC4_UART0;
-
-    if (unit != 0) {
-        printf("uart: unit != 0 not supported yet\n");
+    if (unit > 1) {
+        printf("uart: unit %d not supported yet\n", unit);
         return;
     }
 
     inst = &uart[unit];
 
-    inst->isrcnt = 0;
-    inst->rxofcnt = 0;
-    inst->txofcnt = 0;
+    inst->isrcnt = inst->errisrcnt = 0;
+    inst->txofcnt = inst->rxofcnt = 0;
+    inst->tdrecnt = inst->tccnt = inst->rdrfcnt = inst->idlecnt = 0;
 
     switch (unit) {
     case 0:
+	SIM_SCGC4 |= SIM_SCGC4_UART0;
+
         arm_disable_irq(IRQ_UART0_STATUS);
         arm_disable_irq(IRQ_UART0_ERROR);
 
@@ -252,6 +272,8 @@ void uartinit(int unit) {
 	PORTB_PCR17 = PORT_PCR_DSE | PORT_PCR_SRE | PORT_PCR_MUX(3);
 	goto uart01_common;
     case 1:
+	SIM_SCGC4 |= SIM_SCGC4_UART1;
+
         arm_disable_irq(IRQ_UART1_STATUS);
         arm_disable_irq(IRQ_UART1_ERROR);
 
@@ -264,8 +286,8 @@ void uartinit(int unit) {
         /* fixed speed for now. */
 
         inst->regs->BDH    = 0;
-        inst->regs->BDL    = 0xc0; /* dec 65 = 115200, thus dec 780 = 9600, means BDH 3, BDL c */
-        inst->regs->C4     = 0b00011; /* 0b00100 or 0b00011 */
+        inst->regs->BDL    = 0xc3; /* dec 65 = 115200, thus dec 780 = 9600, means BDH 3, BDL c */
+        inst->regs->C4     = 0b01010; /* 0, 0xc3, 0b01010 gives perfect 38400 */
 	inst->regs->C2     = 0;
 	inst->regs->S2     = 0;
 	
@@ -276,28 +298,34 @@ void uartinit(int unit) {
 	/* interrupt on both overflows but not on receive underflow because of how the UART is
 	 * designed - see quoted comment in interrupt handler
 	 */
-	inst->regs->CFIFO = (UART_CFIFO_TXFLUSH | UART_CFIFO_RXFLUSH);
-
-	/* UART_CFIFO_RXUFE - what to do about it? */
-	inst->regs->CFIFO  = (UART_CFIFO_RXOFE | UART_CFIFO_TXOFE); 
+	inst->regs->CFIFO = (UART_CFIFO_RXOFE | UART_CFIFO_TXOFE); 
 
 	inst->fifosz = 8;
 
         inst->regs->TWFIFO = 1; // tx watermark, causes S1_TDRE to set
-        inst->regs->RWFIFO = 4; // rx watermark, causes S1_RDRF to set
+        inst->regs->RWFIFO = 2; // rx watermark, causes S1_RDRF to set
 
         /*
 	 * deep breath, hope for the best and activate isr
 	 */
         inst->regs->C2     = C2_ENABLE;
-        arm_set_irq_prio(IRQ_UART0_STATUS, SPL_TTY);
-        arm_set_irq_prio(IRQ_UART0_ERROR, SPL_TTY);
 
-        alive = 1;
+	switch(unit) {
+	case 0:
+	    arm_set_irq_prio(IRQ_UART0_STATUS, SPL_TTY);
+	    arm_set_irq_prio(IRQ_UART0_ERROR, SPL_TTY);
+	    arm_enable_irq(IRQ_UART0_ERROR);
+	    arm_enable_irq(IRQ_UART0_STATUS);
+	    break;
+	case 1:
+	    arm_set_irq_prio(IRQ_UART1_STATUS, SPL_TTY);
+	    arm_set_irq_prio(IRQ_UART1_ERROR, SPL_TTY);
+	    arm_enable_irq(IRQ_UART1_ERROR);
+	    arm_enable_irq(IRQ_UART1_STATUS);
+	    break;
+	}
 
-        arm_enable_irq(IRQ_UART0_ERROR);
-        arm_enable_irq(IRQ_UART0_STATUS);
-
+        alive = (1 << unit);
 
         break;
     default:
@@ -312,16 +340,20 @@ int uartopen(dev_t dev, int flag, int mode) {
     register int unit = minor(dev);
     int error, s;
 
+    teensy_gpio_led_value(0xf);
+    
     if (unit < 0 || unit >= NUART)
         return (ENXIO);
 
-    s = spltty();
-
+    teensy_gpio_led_value(0xff);
+    
     tp = &uartttys[unit];
 
     tp->t_oproc = uartstart;
     uip = &uart[unit];
     tp->t_addr = (caddr_t) uip;
+
+    s = spltty();
     if ((tp->t_state & TS_ISOPEN) == 0) {
         if (tp->t_ispeed == 0) {
             tp->t_ispeed = BBAUD(UART_BAUD);
@@ -441,7 +473,8 @@ int uartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag) {
  * each other."
  *
  * UART_S1_TIE       transmitter interrupt
- *
+ * UART_S2_LBKDIF
+ * UART_S2_RXEDGIF   receive edge detection
  * 
  *
  **
@@ -476,12 +509,13 @@ void uartintr(dev_t dev) {
 #ifdef UART_OVERFLOWSTATS
     uip->isrcnt++;
 #endif
-
-	/* receive data above watermark or idle line */
+    /* receive data above watermark or idle line */
     if (uip->regs->S1 & (UART_S1_RDRF | UART_S1_IDLE)) {
+	#if 0
         /* disable irqs to avoid ending up back here with the underrun error  */
         arm_disable_irq(IRQ_UART0_STATUS);
         arm_disable_irq(IRQ_UART0_ERROR);
+	#endif
 
         avail = uip->regs->RCFIFO;
         /* next two comment blocks verbatim from original source */
@@ -507,17 +541,34 @@ void uartintr(dev_t dev) {
 	     * which won't be simple, since we already manage
 	     * which transmit interrupts are enabled.
 	     */
-            UART0_CFIFO = UART_CFIFO_RXFLUSH;
+	    switch (unit) {
+	    case 0:
+		UART0_CFIFO = UART_CFIFO_RXFLUSH;
+		break;
+	    case 1:
+		UART1_CFIFO = UART_CFIFO_RXFLUSH;
+		break;
+	    }
+	    #if 0
+	    arm_enable_irq(IRQ_UART0_STATUS);
+	    arm_enable_irq(IRQ_UART0_ERROR);
+	    #endif
+	    splx(s);
 
         } else {
-            while (avail--) {
+	    #if 0
+	    arm_enable_irq(IRQ_UART0_STATUS);
+	    arm_enable_irq(IRQ_UART0_ERROR);
+	    #endif
+	    splx(s);
+	    
+            /* while (avail--) { */
+	    while (! (uip->regs->SFIFO & UART_SFIFO_RXEMPT)) {
                 n = uip->regs->D;
                 ttyinput(n, tp);
             }
         }
 
-	arm_enable_irq(IRQ_UART0_STATUS);
-	arm_enable_irq(IRQ_UART0_ERROR);
     }
     /* update receive overflow counter and clear the flag */
     if ((uip->regs->SFIFO & UART_SFIFO_RXOF)) {
@@ -528,6 +579,7 @@ void uartintr(dev_t dev) {
 
     /* TIE = transmitter interrupt, TDRE = transmit data below watermark */
     if ((c & UART_C2_TIE) && (uip->regs->S1 & UART_S1_TDRE)) {
+	s = spltty();
 	avail = uip->regs->S1; /* value not used, part of interrupt clearing dance */
 	
         if (0 && tp->t_outq.c_cc) {
@@ -543,28 +595,33 @@ void uartintr(dev_t dev) {
         if (uip->regs->S1 & UART_S1_TDRE) {
             uip->regs->C2 = C2_TX_COMPLETING; /* ignore TIE, wait for TCIE */
         }
+	splx(s);
     }
     
     /* TC = transmit complete interrupt */
     if ((c & UART_C2_TCIE) && (uip->regs->S1 & UART_S1_TC)) {
-#define UART_OVERFLOWSTATS
+	
 #ifdef UART_OVERFLOWSTATS
 	static u_long last_time;
 #endif
+
+	spltty();
 	/* turn the thing off, then! */
         uip->regs->C2 = C2_TX_INACTIVE;
 
         if (tp->t_state & TS_BUSY) {
             tp->t_state &= ~TS_BUSY;
         }
+	splx(s);
 	/* ...maybe refill the FIFO here instead? */
 	ttstart(tp);
 #ifdef UART_OVERFLOWSTATS
         if (!last_time) {
             last_time = systick_ms;
-        } else if (systick_ms - last_time > 30000 && uip->regs->SFIFO & UART_SFIFO_RXEMPT) {
+        } else if (systick_ms - last_time > 30000 && uip->regs->SFIFO & UART_SFIFO_RXEMPT && uip->regs->SFIFO & UART_SFIFO_TXEMPT) {
 	    last_time = systick_ms;
-	    printf("\nuart%d: %d interrupts, %d rx, %d tx overflows\n", unit, uip->isrcnt, uip->rxofcnt, uip->txofcnt);
+	    printf("\nuart%d: %d interrupts, %d/%d rx/tx overruns\n", unit, uip->isrcnt, uip->rxofcnt, uip->txofcnt);
+	    printf("        %d errors, %d/%d/%d/%d TDRE/TC/RDRF/IDLE assertions\n", uip->errisrcnt, uip->tdrecnt, uip->tccnt, uip->rdrfcnt, uip->idlecnt);
         }
 #endif
     }
@@ -572,8 +629,6 @@ void uartintr(dev_t dev) {
 	uip->txofcnt++;
 	uip->regs->SFIFO |= ~UART_SFIFO_TXOF;
     }
-    
-    splx(s);
 }
 
 
@@ -584,6 +639,7 @@ void uartstart(struct tty *tp) {
     uip = (struct uart_inst *) tp->t_addr;
 
     s   = spltty();
+    
     /*
      * let's try again once the terminal is not in this state.
      */
@@ -602,9 +658,9 @@ void uartstart(struct tty *tp) {
     while(tp->t_outq.c_cc) {
         if (uip->regs->TCFIFO < uip->regs->TWFIFO) {
             uip->regs->D  = getc(&tp->t_outq);
-            uip->regs->C2 = C2_TX_ACTIVE;
         }
     }
+    uip->regs->C2 = C2_TX_ACTIVE;
     splx(s);
 }
 
@@ -670,20 +726,12 @@ static int uartprobe(struct conf_device *config) {
     if (unit < 0 || unit >= NUART)
         return 0;
 
-    switch (unit) {
-    case 0:
-        break;
-    default:
-        printf("uart: unit %d not supported\n");
-        return 0;
-    }
-
     /* Initialize the device. */
     uartttys[unit].t_addr = (caddr_t) &uart[unit];
     if (!is_console)
         uartinit(unit);
     
-    printf("uart%d: found, %d-byte FIFO", unit + 1, (unit == 0 || unit == 1) ? 8 : 1);
+    printf("uart%d: %d-byte FIFO", unit + 1, (unit == 0 || unit == 1) ? 8 : 1);
 
     if (is_console)
         printf(", console");

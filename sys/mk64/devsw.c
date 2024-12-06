@@ -206,7 +206,9 @@ const struct cdevsw cdevsw[] = {
 #endif
 },
 {   /* 10 - gpio */
-    NOCDEV
+    nulldev,        nulldev,        nulldev,        nulldev,
+    nulldev,        nulldev,        0,              nulldev,
+    nostrategy,     0,              0,
 },
 {   /* 11 - adc */
     NOCDEV

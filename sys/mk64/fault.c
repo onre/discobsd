@@ -182,6 +182,7 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     unsigned int bfarvalid  = cfsr & BFARVALID_BIT; /* CFSR bit[15] */
 
     static u_long prevfault;
+    static int nfaults;
     
     syst = u.u_ru.ru_stime;
 #ifdef UCB_METER
@@ -266,8 +267,14 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     printf(" lr:\t0x%08x\n", fault_lr);
 
 
-    if (systick_ms - prevfault < 1000) {
+    if (systick_ms - prevfault < 1000 && nfaults > 4) {
 	panic("fault barrage");
+    } else if (systick_ms - prevfault > 2000) {
+	prevfault = systick_ms;
+	nfaults = 0;
+    } else {
+	prevfault = systick_ms;
+	nfaults++;
     }
 
     led_fault(0);
@@ -290,7 +297,6 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
         }
     }
 #endif
-    prevfault = systick_ms;
     
     arm_enable_interrupts();
 

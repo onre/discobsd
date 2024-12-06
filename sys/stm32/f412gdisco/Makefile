@@ -22,6 +22,7 @@ PARAM += -DHALTREBOOT
 PARAM += -DBUS_KHZ=50000
 PARAM += -DCPU_KHZ=100000
 LDSCRIPT = "f412gdisco/STM32F412ZGTX.ld"
+DEBUG = -g
 #
 # Makefile for DiscoBSD, stm32 target
 #

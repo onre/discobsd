@@ -12,5 +12,6 @@
 void
 clkstart()
 {
+    printf("systick: enabling\n");
     systick_init();
 }

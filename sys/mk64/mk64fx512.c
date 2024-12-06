@@ -117,16 +117,16 @@ int nvic_execution_priority(void)
 
 	// full algorithm in ARM DDI0403D, page B1-639
 	// this isn't quite complete, but hopefully good enough
-	__asm__ volatile("mrs %0, faultmask\n" : "=r" (faultmask)::);
+	asm volatile("mrs %0, faultmask\n" : "=r" (faultmask)::);
 	if (faultmask) return -1;
-	__asm__ volatile("mrs %0, primask\n" : "=r" (primask)::);
+	asm volatile("mrs %0, primask\n" : "=r" (primask)::);
 	if (primask) return 0;
-	__asm__ volatile("mrs %0, ipsr\n" : "=r" (ipsr)::);
+	asm volatile("mrs %0, ipsr\n" : "=r" (ipsr)::);
 	if (ipsr) {
 		if (ipsr < 16) priority = 0; // could be non-zero
 		else priority = NVIC_GET_PRIORITY(ipsr - 16);
 	}
-	__asm__ volatile("mrs %0, basepri\n" : "=r" (basepri)::);
+	asm volatile("mrs %0, basepri\n" : "=r" (basepri)::);
 	if (basepri > 0 && basepri < priority) priority = basepri;
 	return priority;
 }

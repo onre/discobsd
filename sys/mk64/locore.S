@@ -13,7 +13,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-
+	
 #define UBASE 0x20000000	/* User space base address. */
 #define USIZE 3072		/* From user.h */
 
@@ -30,7 +30,7 @@
 	.text
 	.align	2
 	.thumb_func
-	.globl	setjmp
+	.global	setjmp
 	.type	setjmp, %function
 setjmp:
 	mov	ip, sp
@@ -75,10 +75,10 @@ setjmp:
 	.text
 	.align	2
 	.thumb_func
-	.globl	longjmp
+	.global	longjmp
 	.type	longjmp, %function
 longjmp:
-	.globl	resume
+	.global	resume
 	.type	resume, %function
 resume:
 	cpsid	i			/* Disable interrupts. */
@@ -149,7 +149,7 @@ resume:
  */
 	.text
 	.align	2
-	.globl	icode
+	.global	icode
 	.type	icode, %object
 icode:
 	.thumb_func
