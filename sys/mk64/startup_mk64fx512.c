@@ -35,6 +35,7 @@
 #include <machine/kinetis.h>
 #include <machine/mk64fx512.h>
 #include <machine/teensy.h>
+#include <machine/gpio.h>
 
 // Flash Security Setting. On Teensy 3.2, you can lock the MK20 chip to prevent
 // ( The same applies to the Teensy 3.5 and Teensy 3.6 for their processors )

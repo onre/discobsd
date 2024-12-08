@@ -23,6 +23,7 @@
 
 #include <machine/frame.h>
 #include <machine/intr.h>
+#include <machine/gpio.h>
 #include <machine/debug.h>
 
 #ifdef DEBUG_PRINT_SYSCALLS

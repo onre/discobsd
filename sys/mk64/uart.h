@@ -37,6 +37,7 @@ int             uartwrite(dev_t dev, struct uio *uio, int flag);
 int             uartselect(dev_t dev, int rw);
 int             uartioctl(dev_t dev, u_int cmd, caddr_t addr, int flag);
 void            uartintr(dev_t dev);
+void            uartstat(void);
 void            uartstart(struct tty *tp);
 void            uartputc(dev_t dev, char c);
 char            uartgetc(dev_t dev);

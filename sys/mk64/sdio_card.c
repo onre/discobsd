@@ -21,9 +21,6 @@
 #include <machine/sd.h>
 #include <machine/sdio_card.h>
 #include <machine/mk6x_sdio.h>
-#include "sd.h"
-#include "mk6x_sdio.h"
-
 
 #define SECTSIZE        512
 
@@ -60,7 +57,7 @@ card_size(int unit)
 int
 card_read(int unit, unsigned int offset, char *data, unsigned int bcount)
 {
-    int nblocks, state;
+    int nblocks, state, s;
 
     if ((bcount % SECTSIZE) == 0) {
         nblocks = bcount / SECTSIZE;
@@ -73,11 +70,14 @@ card_read(int unit, unsigned int offset, char *data, unsigned int bcount)
       bcount, nblocks, SECTSIZE, bcount % SECTSIZE);
 #endif
 
+    s = splbio();
     state = mk6x_sdio_readSectors(offset<<1, data, nblocks);
     
     if (!state) {
 	printf("sd%d: read error: %d\n", unit, mk6x_sdio_errorCode());
     }
+
+    splx(s);
 
     return state;
 }

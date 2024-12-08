@@ -27,6 +27,7 @@
 #include <machine/uart.h>
 #include <machine/systick.h>
 #include <machine/teensy.h>
+#include <machine/gpio.h>
 #include <machine/teensy_usb_dev.h>
 
 #define LED_KERNEL_INIT() /* Nothing. */
@@ -375,24 +376,11 @@ register int howto;
         /* Restart from dev, howto */
 
         /* Reset microcontroller */
-        WRITE_RESTART(0x5FA0004);
+        WRITE_AIRCR(AIRCR_RESTART_MASK);
         /* NOTREACHED */
     }
     printf("halted\n");
 
-    teensy_gpio_led_value(0xf0);
-    led_fault(1);
-
-#ifdef HALTREBOOT
-    printf("press any key to reboot...\n");
-    cngetc();
-
-    /* Reset microcontroller */
-    WRITE_RESTART(0x5FA0004);
-    /* NOTREACHED */
-#endif
-
-    printf("reboot failed; spinning\n");
     for (;;) {
         dsb();
         isb();

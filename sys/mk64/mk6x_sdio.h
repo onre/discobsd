@@ -1,10 +1,9 @@
-#ifndef _MACHINE_MK6X_SDIO_
-#define _MACHINE_MK6X_SDIO_
+#ifndef _MACHINE_MK6X_SDIO_H
+#define _MACHINE_MK6X_SDIO_H
 
 #include <stdint.h>
-#include <sys/types.h>
 #include <machine/sd_card_info.h>
-#include "sd_card_info.h"
+
 
 #define SD_MAX_INIT_RATE_KHZ 400
 #define SDHC_PROCTL_DTW_4BIT 0x01

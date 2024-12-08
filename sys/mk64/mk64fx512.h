@@ -36,7 +36,7 @@
 #include <machine/kinetis.h>
 
 static inline void arm_attach_isr(enum IRQ_NUMBER_t irq,
-				  void (*function)(void)) {
+                                  void (*function)(void)) {
     _VectorsRam[irq + 16] = function;
 }
 
@@ -45,10 +45,9 @@ static inline void arm_attach_isr(enum IRQ_NUMBER_t irq,
  */
 
 #if 1
-static inline unsigned int
-get_basepri(void) {
+static inline unsigned int get_basepri(void) {
     unsigned int result;
-    asm volatile("mrs %0, basepri" : "=r" (result));
+    asm volatile("mrs %0, basepri" : "=r"(result));
     return result;
 }
 #else
@@ -57,47 +56,42 @@ static inline unsigned int get_basepri(void) {
 }
 #endif
 
-#define MEM_MANAGE_HANDLER 4
-#define BUS_FAULT_HANDLER 5
-#define USAGE_FAULT_HANDLER 6
-#define SVCALL_HANDLER 11
+#define MEM_MANAGE_HANDLER    4
+#define BUS_FAULT_HANDLER     5
+#define USAGE_FAULT_HANDLER   6
+#define SVCALL_HANDLER        11
 #define DEBUG_MONITOR_HANDLER 12
-#define PENDSV_HANDLER 14
-#define SYSTICK_HANDLER 15
+#define PENDSV_HANDLER        14
+#define SYSTICK_HANDLER       15
 
-static inline void
-set_basepri(unsigned int value) {
-    asm volatile("msr basepri, %0" :: "r" (value) : "memory");
+static inline void set_basepri(unsigned int value) {
+    asm volatile("msr basepri, %0" ::"r"(value) : "memory");
 }
 
-static inline void
-set_basepri_max(unsigned int value) {
-    asm volatile("msr basepri_max, %0" :: "r" (value) : "memory");
+static inline void set_basepri_max(unsigned int value) {
+    asm volatile("msr basepri_max, %0" ::"r"(value) : "memory");
 }
 
-static inline void isb(void) {
-    asm volatile("isb 0xF" ::: "memory");
-}
+static inline void isb(void) { asm volatile("isb 0xF" ::: "memory"); }
 
-static inline void dsb(void) {
-    asm volatile("dsb");
-}
+static inline void dsb(void) { asm volatile("dsb"); }
 
-static inline void wfi(void) {
-    asm volatile("wfi");
-}
+static inline void wfi(void) { asm volatile("wfi"); }
 
-#define RESTART_ADDR 0xE000ED0C
-#define READ_RESTART() (*(volatile uint32_t *) RESTART_ADDR)
-#define WRITE_RESTART(val)                                         \
-        ((*(volatile uint32_t *) RESTART_ADDR) = (val))
+#define DHCSR                   0xE000EDF0
+#define AIRCR                   0xE000ED0C
+#define READ_AIRCR()            (*(volatile uint32_t *) AIRCR)
+#define WRITE_AIRCR(val)        ((*(volatile uint32_t *) AIRCR) = (val))
+#define WRITE_DHCSR(val)        ((*(volatile uint32_t *) DHCSR) = (val))
+#define AIRCR_RESTART_MASK      0x05FA0004
+#define DHCSR_HALT_MASK         0xA05F0002
 
-#define SCB_SHCSR_MEMFAULTENA ((unsigned int) 1 << 16)
-#define SCB_SHCSR_BUSFAULTENA ((unsigned int) 1 << 17)
-#define SCB_SHCSR_USGFAULTENA ((unsigned int) 1 << 18)
+#define SCB_SHCSR_MEMFAULTENA   ((unsigned int) 1 << 16)
+#define SCB_SHCSR_BUSFAULTENA   ((unsigned int) 1 << 17)
+#define SCB_SHCSR_USGFAULTENA   ((unsigned int) 1 << 18)
 
 #define SCB_ICSR_PENDSVSET_MASK ((unsigned int) 1 << 28)
-#define SCB_CCR_STKALIGN_MASK ((unsigned int) 1 << 9)
+#define SCB_CCR_STKALIGN_MASK   ((unsigned int) 1 << 9)
 
 int nvic_execution_priority(void);
 unsigned long rtc_get(void);

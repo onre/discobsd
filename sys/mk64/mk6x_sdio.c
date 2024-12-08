@@ -25,10 +25,11 @@
  */
 
 #include <stdint.h>
-#include <string.h>
+
 #include <sys/param.h>
 #include <sys/uio.h>
 #include <sys/kconfig.h>
+
 #include <machine/intr.h>
 #include <machine/sdio.h>
 #include <machine/mk6x_sdio.h>
@@ -337,35 +338,35 @@ static void initSDHC() {
     }
 }
 
-static uint32_t statusCMD13() {
+inline static uint32_t statusCMD13() {
     return cardCommand(CMD13_XFERTYP, m_rca) ? SDHC_CMDRSP0 : 0;
 }
 
-static int isBusyCMD13() {
+inline static int isBusyCMD13() {
     return !(statusCMD13() & CARD_STATUS_READY_FOR_DATA);
 }
 
-static int isBusyCommandComplete() {
+inline static int isBusyCommandComplete() {
     return !(SDHC_IRQSTAT & (SDHC_IRQSTAT_CC | SDHC_IRQSTAT_CMD_ERROR));
 }
 
-static int isBusyCommandInhibit() {
+inline static int isBusyCommandInhibit() {
     return SDHC_PRSSTAT & SDHC_PRSSTAT_CIHB;
 }
 
-static int isBusyDat() { return SDHC_PRSSTAT & (1 << 24) ? 0 : 1; }
+inline static int isBusyDat() { return SDHC_PRSSTAT & (1 << 24) ? 0 : 1; }
 
-static int isBusyDMA() { return m_dmaBusy; }
+inline static int isBusyDMA() { return m_dmaBusy; }
 
-static int isBusyFifoRead() {
+inline static int isBusyFifoRead() {
     return !(SDHC_PRSSTAT & SDHC_PRSSTAT_BREN);
 }
 
-static int isBusyFifoWrite() {
+inline static int isBusyFifoWrite() {
     return !(SDHC_PRSSTAT & SDHC_PRSSTAT_BWEN);
 }
 
-static int isBusyTransferComplete() {
+inline static int isBusyTransferComplete() {
     return !(SDHC_IRQSTAT & (SDHC_IRQSTAT_TC | SDHC_IRQSTAT_ERROR));
 }
 
@@ -718,10 +719,10 @@ int mk6x_sdio_readData(char *dst) {
 
     if (!(SDHC_PRSSTAT & SDHC_PRSSTAT_RTA)) {
         SDHC_PROCTL &= ~SDHC_PROCTL_SABGREQ;
-	s = splbio();
+	s = arm_disable_interrupts();
         SDHC_PROCTL |= SDHC_PROCTL_CREQ;
         SDHC_PROCTL |= SDHC_PROCTL_SABGREQ;
-	splx(s);
+	arm_restore_interrupts(s);
     }
     if (waitTimeout(isBusyFifoRead)) {
         return sdError(SD_CARD_ERROR_READ_FIFO);

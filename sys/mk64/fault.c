@@ -28,6 +28,7 @@
 #include <machine/frame.h>
 #include <machine/intr.h>
 #include <machine/systick.h>
+#include <machine/gpio.h>
 #include <machine/teensy.h>
 
 /*

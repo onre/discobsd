@@ -21,6 +21,7 @@
 
 #include <machine/atomic.h>
 #include <machine/teensy.h>
+#include <machine/gpio.h>
 #include <machine/mk64fx512.h>
 #include <machine/machparam.h>
 #include <machine/kinetis.h>

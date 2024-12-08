@@ -1,5 +1,5 @@
-#ifndef _MACHINE_SDIO_CARD_H_
-#define _MACHINE_SDIO_CARD_H_
+#ifndef _MACHINE_SDIO_CARD_H
+#define _MACHINE_SDIO_CARD_H
 
 #ifdef KERNEL
 int     card_init(int unit);

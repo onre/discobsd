@@ -81,4 +81,4 @@ mk64/sd.c                      optional sd
 mk64/sdio_card.c               optional sd
 mk64/sdio.c		       optional sdio
 mk64/mk6x_sdio.c	       optional sdio
-
+mk64/gpio.c		       optional gpio
