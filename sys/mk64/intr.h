@@ -196,9 +196,9 @@ static inline int spl0(void) {
     int old;
 
     old = nvic_execution_priority();
-    set_basepri(0);
+    set_basepri(SPL_NONE);
     __set_barrier();
-    teensy_gpio_led_spl(0);
+    teensy_gpio_led_spl(7);
 
     return old;
 }

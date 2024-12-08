@@ -116,7 +116,7 @@ void startup() {
     
     arm_set_system_handler_prio(SYSTICK_HANDLER, SPL_CLOCK);
     arm_set_system_handler_prio(SVCALL_HANDLER, SPL_TOP);   /* syscalls */
-    arm_set_system_handler_prio(PENDSV_HANDLER, SPL_NONE);  /* there are things involved with this */
+    arm_set_system_handler_prio(PENDSV_HANDLER, SPL_LEAST);  /* there are things involved with this */
     
     arm_enable_fault(MM_FAULT_ENABLE);
     arm_enable_fault(BF_FAULT_ENABLE);

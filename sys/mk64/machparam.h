@@ -32,6 +32,7 @@
 #define SPL_CLOCK     SPL_DEFAULT
 #define SPL_HIGH      SPL_DEFAULT
 #define SPL_TOP       SPL_DEFAULT
+#define SPL_NONE      SPL_DEFAULT
 
 #else
 
