@@ -16,7 +16,7 @@ MDSUBDIR!=if [ x"${MACHINE_ARCH}" = x"arm" ] ; then \
 
 SUBDIR		= aout ar arch as awk basic calendar cc chflags \
                   chpass cpp dc diff emg env find fold forth \
-                  fstat glcdtest id la lcc lcpp ld login m4 make \
+                  fstat glcdtest hurtkernel id la lcc lcpp ld login m4 make \
                   man med more nm passwd pdc picoc portio printf pwm \
                   ranlib re renice retroforth scm sed setty sl smallc \
                   smux uname wiznet xargs xinstall \
