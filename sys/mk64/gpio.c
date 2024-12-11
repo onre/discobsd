@@ -30,6 +30,7 @@
 #include <machine/intr.h>
 #include <machine/uart.h>
 #include <machine/systick.h>
+#include <machine/mpu.h>
 
 teensy_gpio_pin teensy_gpio_pins[NPINS] = {
     /* tpin, port, pin, dir, pullup, irq trigger, reserved, is led? (early init) */
@@ -81,7 +82,7 @@ static void port_isr(int port) {
 	    /* printf("gpio: pin %c%d: interrupt\n", 0x41 + port, c);*/
 	    /* printf("%8d si %d so %d \n", systick_ms, cnt.v_swpin, cnt.v_swpout); */
 	    printf("\n");
-	    mpustat(1);
+	    mpu_stat(1);
 	    sync();
 	    *isfr |= (1 << c);
 	}

@@ -72,6 +72,7 @@ mk64/teensy_usb_desc.c	       optional uartusb
 mk64/teensy_usb_dev.c	       optional uartusb
 mk64/teensy_usb_mem.c	       optional uartusb
 mk64/teensy_usb_serial.c       optional uartusb
+mk64/mpu.c		       standard
 mk64/memset.S		       standard
 mk64/memcpy-armv7m.S	       standard
 mk64/locore.S		       standard

@@ -29,6 +29,7 @@
 #include <machine/teensy.h>
 #include <machine/gpio.h>
 #include <machine/teensy_usb_dev.h>
+#include <machine/mpu.h>
 
 #define LED_KERNEL_INIT()
 #define LED_KERNEL_ON()
@@ -179,7 +180,7 @@ static void cpuidentify() {
     }
 
     printf(", %u MHz, bus %u MHz\n", CPU_KHZ / 1000, BUS_KHZ / 1000);
-    mpustat(0);
+    mpu_stat(0);
 
 #ifdef TEENSY35
     physmem = 255 * 1024;
@@ -222,69 +223,6 @@ static void cpuidentify() {
     printf("oscillating\n");
 }
 
-
-#define MPU_WORD2_LOBM_FMT "u:%c%c%c s:%3s p%c"
-
-#define MPU_PARSE_WORD2_LOBM(bmbits)                                   \
-    (bmbits & 0x4) ? 'r' : '-', (bmbits & 0x2) ? 'w' : '-',            \
-        (bmbits & 0x1) ? 'x' : '-',                                    \
-        (((bmbits & 0x18) == 0x18)   ? "usr"                           \
-         : ((bmbits & 0x18) == 0x10) ? "rw-"                           \
-         : ((bmbits & 0x18) == 0x8)  ? "r-x"                           \
-                                     : "rwx"),                          \
-        (bmbits & 0x20) ? '1' : '0'
-
-
-void mpustat(int verbose) {
-    int mpuregcnt;
-
-    if (!(MPU_CESR & 1)) {
-        printf("mpu: disabled\n");
-        return;
-    }
-
-    mpuregcnt =
-        (MPU_CESR & (1 << 9)) ? 16 : ((MPU_CESR & (1 << 8)) ? 12 : 8);
-    printf("mpu: enabled, %d regions supported\n", mpuregcnt);
-
-    if (!verbose)
-        return;
-
-    for (int n = 0; n < mpuregcnt; n++) {
-        unsigned int *regstart, *regend, *regword2, *regword3, *rgdaac;
-        /**
-	 * MPU_CESR       =  0x4000D000 
-	 * MPU_RGDn_WORD0 =  MPU_CESR + 0x400 + (0x10 * n) 
-	 * MPU_RGDn_WORD1 =  MPU_CESR + 0x404 + (0x10 * n) 
-	 * MPU_RGDn_WORD2 =  MPU_CESR + 0x408 + (0x10 * n) 
-	 * MPU_RGDn_WORD3 =  MPU_CESR + 0x40C + (0x10 * n) 
-	 * MPU_RGDAACn    =  MPU_CESR + 0x800 + (0x04 * n)
-	 */
-
-        regstart = (unsigned int *) (0x4000D000 + 0x400 + (0x10 * n));
-        regend   = (unsigned int *) (0x4000D000 + 0x404 + (0x10 * n));
-        regword2 = (unsigned int *) (0x4000D000 + 0x408 + (0x10 * n));
-        regword3 = (unsigned int *) (0x4000D000 + 0x40C + (0x10 * n));
-        rgdaac   = (unsigned int *) (0x4000D000 + 0x800 + (0x04 * n));
-
-        /* there might be a corner case where this is a legitimately
-	 * useful MPU region configuration, but this'll do for now.
-	 */
-        if (*regstart == *regend && !*regword3)
-            continue;
-
-        printf("mpu: region %2d: 0x%08x-0x%08x, flags 0x%08x, %s\n", n,
-               *regstart, *regend | 0x1f, *rgdaac,
-               (*regword3 & 1) ? "valid" : "invalid");
-        if (*regword3 & 1) {
-            for (int bm = 0; bm < 4; bm++) {
-                printf(" bm%d:" MPU_WORD2_LOBM_FMT, bm,
-                       MPU_PARSE_WORD2_LOBM((*regword2 >> bm * 6)));
-            }
-            printf("\n");
-        }
-    }
-}
 
 /*
  * Check whether the controller has been successfully initialized.
