@@ -30,9 +30,9 @@
 #include <machine/gpio.h>
 #include <machine/teensy_usb_dev.h>
 
-#define LED_KERNEL_INIT() /* Nothing. */
-#define LED_KERNEL_ON()   /* Nothing. */
-#define LED_KERNEL_OFF()  /* Nothing. */
+#define LED_KERNEL_INIT()
+#define LED_KERNEL_ON()
+#define LED_KERNEL_OFF()
 
 #define LED_SWAP_INIT()
 #define LED_SWAP_ON()
@@ -49,7 +49,7 @@
 #define BUTTON_USER_INIT()
 #define BUTTON_USER_PRESSED() (0) /* no-one presses the button. ever. */
 
-char machine[]      = MACHINE;      /* from <machine/machparam.h> */
+char machine[]      = MACHINE;    /* from <machine/machparam.h> */
 char machine_arch[] = MACHINE_ARCH; /* from <machine/machparam.h> */
 char cpu_model[64];
 
@@ -82,7 +82,7 @@ struct file file[NFILE];
 #ifdef PERMANENTLY_INSECURE
 int securelevel = -1;
 #else
-int securelevel = 0;
+int securelevel    = 0;
 #endif
 
 struct mapent swapent[SMAPSIZ];
@@ -111,19 +111,18 @@ daddr_t dumplo = (daddr_t) 0x1fff0000;
  */
 void startup() {
     boothowto = 0;
-    
+
     mpu_init();
-    
+
     arm_set_system_handler_prio(SYSTICK_HANDLER, SPL_CLOCK);
-    arm_set_system_handler_prio(SVCALL_HANDLER, SPL_TOP);   /* syscalls */
-    arm_set_system_handler_prio(PENDSV_HANDLER, SPL_LEAST);  /* there are things involved with this */
-    
+    arm_set_system_handler_prio(SVCALL_HANDLER, SPL_TOP);
+    arm_set_system_handler_prio(PENDSV_HANDLER, SPL_LEAST);
+
     arm_enable_fault(MM_FAULT_ENABLE);
     arm_enable_fault(BF_FAULT_ENABLE);
     arm_enable_fault(UF_FAULT_ENABLE);
-    
+
     teensy_gpio_init();
-    /* teensy_gpio_led_test(); */
     led_fault(0);
     teensy_gpio_led_spl(0);
     teensy_gpio_led_value(0);
@@ -142,13 +141,13 @@ void startup() {
 
 static void cpuidentify() {
     char cpustr[12] = "Kinetis ?00";
-    u_char family, subfamily, series, pinid;
+    u_char family, subfamily, series /* , pinid */;
 
     printf("cpu: ");
 
-    family = (SIM_SDID >> 28);
+    family    = (SIM_SDID >> 28);
     subfamily = (SIM_SDID >> 23) & 0xf;
-    series = (SIM_SDID >> 20) & 0xf;
+    series    = (SIM_SDID >> 20) & 0xf;
     /* revision = (SIM_SDID >> 12) & 0xf;
      * dieid = (SIM_SDID >> 7) & 0x1f;
      * pinid = SIM_SDID & 0xf;
@@ -176,74 +175,115 @@ static void cpuidentify() {
     printf(cpustr);
 
     if (subfamily & 1) {
-	printf(" (tamper detect)");
+        printf(" (tamper detect)");
     }
 
     printf(", %u MHz, bus %u MHz\n", CPU_KHZ / 1000, BUS_KHZ / 1000);
-    printf("mpu: %s", (MPU_CESR & 1) ? "enabled" : "disabled\n");
-    if (MPU_CESR & 1) {
-	int mpuregcnt;
-
-        mpuregcnt = (MPU_CESR & (1 << 9)) ? 16 : ((MPU_CESR & (1 << 8)) ? 12 : 8);
-        printf(", %d regions\n", mpuregcnt);
-        for (int i = 0; i < mpuregcnt; i++) {
-            unsigned int *regstart, *regend, *regword2, *regword3, *rgdaac;
-            /**
-             * MPU_CESR       =  0x4000D000 
-             * MPU_RGDi_WORD0 =  MPU_CESR + 0x400 + (0x10 * i) 
-             * MPU_RGDi_WORD1 =  MPU_CESR + 0x404 + (0x10 * i) 
-             * MPU_RGDi_WORD2 =  MPU_CESR + 0x408 + (0x10 * i) 
-             * MPU_RGDi_WORD3 =  MPU_CESR + 0x40C + (0x10 * i) 
-             * MPU_RGDAACi    =  MPU_CESR + 0x800 + (0x04 * i)
-             */
-
-            regstart = (unsigned int *)  (0x4000D000 + 0x400 + (0x10 * i));
-            regend = (unsigned int *) (0x4000D000 + 0x404 + (0x10 * i));
-            regword2 = (unsigned int *) (0x4000D000 + 0x408 + (0x10 * i));
-            regword3 = (unsigned int *) (0x4000D000 + 0x40C + (0x10 * i));
-            rgdaac = (unsigned int *) (0x4000D000 + 0x800 + (0x04 * i));
-
-            if (!(*regword3 & 1)) { /* region deemed invalid by MPU */
-                continue;
-            }
-
-            printf("mpu: region %d: 0x%08x-0x%08x flags 0x%08x\n",
-		   i, *regstart, *regend | 0x1f, *rgdaac);
-        }
-    } else {
-        printf("\n");
-    }
+    mpustat(0);
 
 #ifdef TEENSY35
     physmem = 255 * 1024;
 #else
     switch ((SIM_SOPT1 >> 12) & 0xF) {
     case 1:
-	physmem = 8 * 1024; break;
+        physmem = 8 * 1024;
+        break;
     case 0b11:
-	physmem = 16 * 1024; break;
+        physmem = 16 * 1024;
+        break;
     case 0b100:
-	physmem = 24 * 1024; break;
+        physmem = 24 * 1024;
+        break;
     case 0b101:
-	physmem = 32 * 1024; break;
+        physmem = 32 * 1024;
+        break;
     case 0b110:
-	physmem = 48 * 1024; break;
+        physmem = 48 * 1024;
+        break;
     case 0b111:
-	physmem = 64 * 1024; break;
+        physmem = 64 * 1024;
+        break;
     case 0b1000:
-	physmem = 96 * 1024; break;
+        physmem = 96 * 1024;
+        break;
     case 0b1001:
-	physmem = 128 * 1024; break;
+        physmem = 128 * 1024;
+        break;
     case 0b1011:
-	physmem = 256 * 1024; break;
+        physmem = 256 * 1024;
+        break;
     default:
-	physmem = 0;
-	panic("can't read physmem amount");
+        physmem = 0;
+        panic("can't read physmem amount");
     }
 #endif
-    
+
     printf("oscillator: ");
     printf("oscillating\n");
+}
+
+
+#define MPU_WORD2_LOBM_FMT "u:%c%c%c s:%3s p%c"
+
+#define MPU_PARSE_WORD2_LOBM(bmbits)                                   \
+    (bmbits & 0x4) ? 'r' : '-', (bmbits & 0x2) ? 'w' : '-',            \
+        (bmbits & 0x1) ? 'x' : '-',                                    \
+        (((bmbits & 0x18) == 0x18)   ? "usr"                           \
+         : ((bmbits & 0x18) == 0x10) ? "rw-"                           \
+         : ((bmbits & 0x18) == 0x8)  ? "r-x"                           \
+                                     : "rwx"),                          \
+        (bmbits & 0x20) ? '1' : '0'
+
+
+void mpustat(int verbose) {
+    int mpuregcnt;
+
+    if (!(MPU_CESR & 1)) {
+        printf("mpu: disabled\n");
+        return;
+    }
+
+    mpuregcnt =
+        (MPU_CESR & (1 << 9)) ? 16 : ((MPU_CESR & (1 << 8)) ? 12 : 8);
+    printf("mpu: enabled, %d regions supported\n", mpuregcnt);
+
+    if (!verbose)
+        return;
+
+    for (int n = 0; n < mpuregcnt; n++) {
+        unsigned int *regstart, *regend, *regword2, *regword3, *rgdaac;
+        /**
+	 * MPU_CESR       =  0x4000D000 
+	 * MPU_RGDn_WORD0 =  MPU_CESR + 0x400 + (0x10 * n) 
+	 * MPU_RGDn_WORD1 =  MPU_CESR + 0x404 + (0x10 * n) 
+	 * MPU_RGDn_WORD2 =  MPU_CESR + 0x408 + (0x10 * n) 
+	 * MPU_RGDn_WORD3 =  MPU_CESR + 0x40C + (0x10 * n) 
+	 * MPU_RGDAACn    =  MPU_CESR + 0x800 + (0x04 * n)
+	 */
+
+        regstart = (unsigned int *) (0x4000D000 + 0x400 + (0x10 * n));
+        regend   = (unsigned int *) (0x4000D000 + 0x404 + (0x10 * n));
+        regword2 = (unsigned int *) (0x4000D000 + 0x408 + (0x10 * n));
+        regword3 = (unsigned int *) (0x4000D000 + 0x40C + (0x10 * n));
+        rgdaac   = (unsigned int *) (0x4000D000 + 0x800 + (0x04 * n));
+
+        /* there might be a corner case where this is a legitimately
+	 * useful MPU region configuration, but this'll do for now.
+	 */
+        if (*regstart == *regend && !*regword3)
+            continue;
+
+        printf("mpu: region %2d: 0x%08x-0x%08x, flags 0x%08x, %s\n", n,
+               *regstart, *regend | 0x1f, *rgdaac,
+               (*regword3 & 1) ? "valid" : "invalid");
+        if (*regword3 & 1) {
+            for (int bm = 0; bm < 4; bm++) {
+                printf(" bm%d:" MPU_WORD2_LOBM_FMT, bm,
+                       MPU_PARSE_WORD2_LOBM((*regword2 >> bm * 6)));
+            }
+            printf("\n");
+        }
+    }
 }
 
 /*
@@ -260,8 +300,8 @@ int unit;
         return 1;
 
     for (ctlr = conf_ctlr_init; ctlr->ctlr_driver; ctlr++) {
-        if (ctlr->ctlr_driver == driver && ctlr->ctlr_unit == unit &&
-            ctlr->ctlr_alive) {
+        if (ctlr->ctlr_driver == driver && ctlr->ctlr_unit == unit
+            && ctlr->ctlr_alive) {
             return 1;
         }
     }
@@ -319,7 +359,7 @@ void idle() {
 
     teensy_gpio_led_value(idling);
 #endif
-    
+
     /* Wait for something to happen. */
     dsb();
     isb();
@@ -332,8 +372,8 @@ void idle() {
 void boot(dev, howto) register dev_t dev;
 register int howto;
 {
-    if ((howto & RB_NOSYNC) == 0 && waittime < 0 &&
-        bfreelist[0].b_forw) {
+    if ((howto & RB_NOSYNC) == 0 && waittime < 0
+        && bfreelist[0].b_forw) {
         register struct fs *fp;
         register struct buf *bp;
         int iter, nbusy;
@@ -405,12 +445,12 @@ unsigned int micros(void) {
     unsigned int count, current, istatus;
     int s;
 
-    s = splclock();
+    s       = splclock();
     current = SYST_CVR;
     count   = systick_ms;
     istatus = SCB_ICSR; // bit 26 indicates if systick exception pending
     splx(s);
-    
+
     if ((istatus & SCB_ICSR_PENDSTSET) && current > 50)
         count++;
     current = ((F_CPU / 1000) - 1) - current;
@@ -424,49 +464,24 @@ unsigned int micros(void) {
 
 void mdelay(unsigned int msec) {
     unsigned int start = micros();
-    
+
     if (msec > 0) {
         while (1) {
             while ((micros() - start) >= 1000) {
                 msec--;
                 if (msec == 0)
                     return;
-		start += 1000;
+                start += 1000;
             }
         }
     }
 }
 
 
-/*
- * Control LEDs, installed on the board.
+/**
+ * our led setup is slightly more involved.
  */
-void led_control(int mask, int on) {
-    if (mask & LED_TTY) { /* Terminal i/o */
-        if (on)
-            LED_TTY_ON();
-        else
-            LED_TTY_OFF();
-    }
-    if (mask & LED_SWAP) { /* Auxiliary swap */
-        if (on)
-            LED_SWAP_ON();
-        else
-            LED_SWAP_OFF();
-    }
-    if (mask & LED_DISK) { /* Disk i/o */
-        if (on)
-            LED_DISK_ON();
-        else
-            LED_DISK_OFF();
-    }
-    if (mask & LED_KERNEL) { /* Kernel activity */
-        if (on)
-            LED_KERNEL_ON();
-        else
-            LED_KERNEL_OFF();
-    }
-}
+void led_control(int mask, int on) {}
 
 /*
  * Increment user profiling counters.
@@ -555,8 +570,8 @@ register const char *s;
 int baduaddr(addr)
 register caddr_t addr;
 {
-    if (addr >= (caddr_t) __user_data_start &&
-        addr < (caddr_t) __user_data_end)
+    if (addr >= (caddr_t) __user_data_start
+        && addr < (caddr_t) __user_data_end)
         return 0;
     return 1;
 }
@@ -568,11 +583,11 @@ register caddr_t addr;
 int badkaddr(addr)
 register caddr_t addr;
 {
-    if (addr >= (caddr_t) __kernel_data_start &&
-        addr < (caddr_t) __kernel_data_end)
+    if (addr >= (caddr_t) __kernel_data_start
+        && addr < (caddr_t) __kernel_data_end)
         return 0;
-    if (addr >= (caddr_t) __kernel_flash_start &&
-        addr < (caddr_t) __kernel_flash_end)
+    if (addr >= (caddr_t) __kernel_flash_start
+        && addr < (caddr_t) __kernel_flash_end)
         return 0;
     return 1;
 }
@@ -624,7 +639,7 @@ int strncmp(const char *s1, const char *s2, size_t n) {
 }
 
 /* Nonzero if pointer is not aligned on a "sz" boundary.  */
-#define UNALIGNED(p, sz) ((unsigned) (p) & ((sz) - 1))
+#define UNALIGNED(p, sz) ((unsigned) (p) & ((sz) -1))
 
 #ifdef USE_RETROBSD_BCOPY
 /*
@@ -642,12 +657,12 @@ void bcopy(const void *src0, void *dst0, size_t nbytes) {
     const DWORD_TYPE *aligned_src;
 
     /* printf("bcopy (%08x, %08x, %d)\n", src0, dst0, nbytes); */
-    
+
     /* If the size is small, or either SRC or DST is unaligned,
      * then punt into the byte copy loop.  This should be rare.  */
-    if (nbytes >= 4 * sizeof(DWORD_TYPE) &&
-        !UNALIGNED(src, sizeof(DWORD_TYPE)) &&
-        !UNALIGNED(dst, sizeof(DWORD_TYPE))) {
+    if (nbytes >= 4 * sizeof(DWORD_TYPE)
+        && !UNALIGNED(src, sizeof(DWORD_TYPE))
+        && !UNALIGNED(dst, sizeof(DWORD_TYPE))) {
         aligned_dst = (DWORD_TYPE *) dst;
         aligned_src = (const DWORD_TYPE *) src;
 
@@ -723,9 +738,7 @@ void bzero(void *dst0, size_t nbytes) {
         *dst++ = 0;
 }
 #else
-void bzero(void *dst0, size_t nbytes) {
-    memset(dst0, 0, nbytes);
-}
+void bzero(void *dst0, size_t nbytes) { memset(dst0, 0, nbytes); }
 #endif
 
 /*
@@ -743,9 +756,9 @@ int bcmp(const void *m1, const void *m2, size_t nbytes) {
     /* If the size is too small, or either pointer is unaligned,
      * then we punt to the byte compare loop.  Hopefully this will
      * not turn up in inner loops.  */
-    if (nbytes >= 4 * sizeof(unsigned) &&
-        !UNALIGNED(s1, sizeof(unsigned)) &&
-        !UNALIGNED(s2, sizeof(unsigned))) {
+    if (nbytes >= 4 * sizeof(unsigned)
+        && !UNALIGNED(s1, sizeof(unsigned))
+        && !UNALIGNED(s2, sizeof(unsigned))) {
         /* Otherwise, load and compare the blocks of memory one
            word at a time.  */
         aligned1 = (const unsigned *) s1;

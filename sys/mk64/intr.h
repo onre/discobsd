@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2024 <esp@iki.fi>
  * Copyright (c) 2022 Christopher Hettrick <chris@structfoo.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -25,6 +26,37 @@
 #include <machine/mk64fx512.h>
 #include <machine/machparam.h>
 #include <machine/kinetis.h>
+
+/**
+ * SIMPLE_INTERRUPTS - preset all interrupts to equal priority in
+ * startup code and then make sure none of the kernel code changes any
+ * of those priorities.
+ */
+
+#ifdef SIMPLE_INTERRUPTS
+
+#define SET_DEFAULT_INTERRUPT_PRIORITY
+#define SPL_DEFAULT 0
+
+#define SPL_LEAST     SPL_DEFAULT
+#define SPL_SOFTCLOCK SPL_DEFAULT
+#define SPL_NET       SPL_DEFAULT
+#define SPL_TTY       SPL_DEFAULT
+#define SPL_BIO       SPL_DEFAULT
+#define SPL_CLOCK     SPL_DEFAULT
+#define SPL_HIGH      SPL_DEFAULT
+#define SPL_TOP       SPL_DEFAULT
+#define SPL_NONE      SPL_DEFAULT
+
+#else
+
+#define HARDMODE
+
+#define SET_DEFAULT_INTERRUPT_PRIORITY
+#define SPL_DEFAULT SPL_LEAST
+
+#endif
+
 
 /**
  * DDI0403D chapter B1.5, or how I understood it:
@@ -77,16 +109,16 @@
 
 #define SPL_NONE      240
 
-#define SPL_LEAST     224
-#define SPL_SOFTCLOCK 192
-#define SPL_NET       160
+#define SPL_LEAST     (7 << 4)
+#define SPL_SOFTCLOCK (6 << 4)
+#define SPL_NET       (5 << 4)
 
-#define SPL_TTY       128
-#define SPL_BIO       96
+#define SPL_TTY       (4 << 4)
+#define SPL_BIO       (3 << 4)
 
-#define SPL_CLOCK     64
-#define SPL_HIGH      32
-#define SPL_TOP       16
+#define SPL_CLOCK     (2 << 4)
+#define SPL_HIGH      (1 << 4)
+#define SPL_TOP       (0 << 4)
 
 #define splusb()      spltty()
 
@@ -198,7 +230,7 @@ static inline int spl0(void) {
     old = nvic_execution_priority();
     set_basepri(SPL_NONE);
     __set_barrier();
-    teensy_gpio_led_spl(7);
+    teensy_gpio_led_spl(0);
 
     return old;
 }

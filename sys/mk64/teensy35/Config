@@ -38,7 +38,7 @@ config          unix    root on sd0a
 
 #device           uartusb1                    # Teensy virtual USB UART
 device           uart1
-# device           uart2
+device           uart2
 #device          uart3                       # USART3
 #device          uart4                       # UART4
 #device          uart5                       # UART5

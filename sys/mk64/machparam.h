@@ -12,37 +12,6 @@
 #error can not define USB_DISABLED and USB_SERIAL simultaneously
 #endif
 
-/*
- * SIMPLE_INTERRUPTS - preset all interrupts to equal priority in startup code and then
- * make sure none of the kernel code changes any of those priorities.
- *
- * TODO: implement.
- */
-
-#ifdef SIMPLE_INTERRUPTS
-
-#define SET_DEFAULT_INTERRUPT_PRIORITY
-#define SPL_DEFAULT 128
-
-#define SPL_LEAST     SPL_DEFAULT
-#define SPL_SOFTCLOCK SPL_DEFAULT
-#define SPL_NET       SPL_DEFAULT
-#define SPL_TTY       SPL_DEFAULT
-#define SPL_BIO       SPL_DEFAULT
-#define SPL_CLOCK     SPL_DEFAULT
-#define SPL_HIGH      SPL_DEFAULT
-#define SPL_TOP       SPL_DEFAULT
-#define SPL_NONE      SPL_DEFAULT
-
-#else
-
-#define HARDMODE
-
-#define SET_DEFAULT_INTERRUPT_PRIORITY
-#define SPL_DEFAULT SPL_LEAST
-
-#endif
-
 
 #ifndef ENDIAN
 
@@ -84,10 +53,10 @@
 #define NBUF 10 /* number of i/o buffers */
 #endif
 #ifndef MAXUSERS
-#define MAXUSERS 1 /* number of user logins */
+#define MAXUSERS 2 /* number of user logins */
 #endif
 #ifndef NPROC
-#define NPROC 25 /* number of processes */
+#define NPROC 24 /* number of processes */
 #endif
 #ifndef NINODE
 #define NINODE 24
@@ -191,6 +160,8 @@ void *memset(void *s, int c, size_t n);
 #define LED_ALL    (LED_TTY | LED_SWAP | LED_DISK | LED_KERNEL)
 
 void led_control(int mask, int on);
+
+void mpustat(int verbose);
 
 /*
  * SD timeouts, for sysctl.

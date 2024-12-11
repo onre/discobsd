@@ -63,86 +63,27 @@ static int m_transferActive = 0;
 static int m_sdioConfig     = 0;
 uint8_t m_errorCode         = SD_CARD_ERROR_INIT_NOT_CALLED;
 uint32_t m_errorLine        = 0;
-static uint32_t m_rca;
+/**
+ * the following names come from the SD spec.
+ */
+static volatile uint32_t m_rca; /* relative card address */
 static volatile int m_dmaBusy = 0;
 static volatile uint32_t m_irqstat;
 static uint32_t m_sdClkKhz = 0;
-static uint32_t m_ocr;
-static cid_t m_cid;
-static csd_t m_csd;
+static volatile uint32_t m_ocr; /* operation condition register */
+static cid_t m_cid; /* card identification number */
+static csd_t m_csd; /* card specific data */
 
 static const uint8_t IDLE_STATE  = 0;
 static const uint8_t READ_STATE  = 1;
 static const uint8_t WRITE_STATE = 2;
 
-uint8_t m_curState               = IDLE_STATE;
-uint32_t m_curSector;
+volatile uint8_t m_curState               = IDLE_STATE;
+volatile uint32_t m_curSector;
 
 #define ALIGNMENT_TARGET 7
 
-#define DBG_TRACE        printf("TRACE: " __LINE__ "\n");
-#define USE_DEBUG_MODE   0
-#if USE_DEBUG_MODE
-#define DBG_IRQSTAT()                                                  \
-    if (SDHC_IRQSTAT) {                                                \
-        printf(__LINE__);                                              \
-        printf(" IRQSTAT 0x%x\n", SDHC_IRQSTAT);                       \
-    }
-static void printRegs(uint32_t line) {
-    uint32_t blkattr = SDHC_BLKATTR;
-    uint32_t xfertyp = SDHC_XFERTYP;
-    uint32_t prsstat = SDHC_PRSSTAT;
-    uint32_t proctl  = SDHC_PROCTL;
-    uint32_t irqstat = SDHC_IRQSTAT;
-
-#if 0  
-  Serial.print("\nLINE: ");
-  Serial.println(line);
-  Serial.print("BLKATTR ");
-  Serial.println(blkattr, HEX);
-  Serial.print("XFERTYP ");
-  Serial.print(xfertyp, HEX);
-  Serial.print(" CMD");
-  Serial.print(xfertyp >> 24);
-  Serial.print(" TYP");
-  Serial.print((xfertyp >> 2) & 3);
-  if (xfertyp & SDHC_XFERTYP_DPSEL) {Serial.print(" DPSEL");}
-  Serial.println();
-  Serial.print("PRSSTAT ");
-  Serial.print(prsstat, HEX);
-  if (prsstat & SDHC_PRSSTAT_BREN) {Serial.print(" BREN");}
-  if (prsstat & SDHC_PRSSTAT_BWEN) {Serial.print(" BWEN");}
-  if (prsstat & SDHC_PRSSTAT_RTA) {Serial.print(" RTA");}
-  if (prsstat & SDHC_PRSSTAT_WTA) {Serial.print(" WTA");}
-  if (prsstat & SDHC_PRSSTAT_SDOFF) {Serial.print(" SDOFF");}
-  if (prsstat & SDHC_PRSSTAT_PEROFF) {Serial.print(" PEROFF");}
-  if (prsstat & SDHC_PRSSTAT_HCKOFF) {Serial.print(" HCKOFF");}
-  if (prsstat & SDHC_PRSSTAT_IPGOFF) {Serial.print(" IPGOFF");}
-  if (prsstat & SDHC_PRSSTAT_SDSTB) {Serial.print(" SDSTB");}
-  if (prsstat & SDHC_PRSSTAT_DLA) {Serial.print(" DLA");}
-  if (prsstat & SDHC_PRSSTAT_CDIHB) {Serial.print(" CDIHB");}
-  if (prsstat & SDHC_PRSSTAT_CIHB) {Serial.print(" CIHB");}
-  Serial.println();
-  Serial.print("PROCTL ");
-  Serial.print(proctl, HEX);
-  if (proctl & SDHC_PROCTL_SABGREQ) Serial.print(" SABGREQ");
-  Serial.print(" EMODE");
-  Serial.print((proctl >>4) & 3);
-  Serial.print(" DWT");
-  Serial.print((proctl >>1) & 3);
-  Serial.println();
-  Serial.print("IRQSTAT ");
-  Serial.print(irqstat, HEX);
-  if (irqstat & SDHC_IRQSTAT_BGE) {Serial.print(" BGE");}
-  if (irqstat & SDHC_IRQSTAT_TC) {Serial.print(" TC");}
-  if (irqstat & SDHC_IRQSTAT_CC) {Serial.print(" CC");}
-  Serial.print("\nm_irqstat ");
-  Serial.println(m_irqstat, HEX);
-#endif
-}
-#else // USE_DEBUG_MODE
 #define DBG_IRQSTAT()
-#endif // USE_DEBUG_MODE
 
 // Error function and macro.
 #define sdError(code) setSdErrorCode(code, __LINE__)
@@ -372,7 +313,7 @@ inline static int isBusyTransferComplete() {
 
 static int rdWrSectors(uint32_t xfertyp, uint32_t sector, char *buf,
                        size_t n) {
-    if ((3 & (uint32_t) buf) || n == 0) {
+    if ((ALIGNMENT_TARGET & (uint32_t) buf) || n == 0) {
         return sdError(SD_CARD_ERROR_DMA);
     }
     if (yieldTimeout(isBusyCMD13)) {
@@ -477,7 +418,6 @@ static int yieldTimeout(int (*fcn)()) {
 	    printf("sdio: timeout\n");
             return 1;
         }
-        /* yield(); */
     }
     m_busyFcn = 0;
     return 0; // Caller will set errorCode.
@@ -792,7 +732,7 @@ int mk6x_sdio_readSector(uint32_t sector, char *dst) {
 
 int mk6x_sdio_readSectors(uint32_t sector, char *dst, size_t n) {
     if (SDIOCONFIG_USE_DMA) {
-        if ((uint32_t) dst & 3) {
+        if ((uint32_t) dst & ALIGNMENT_TARGET) {
             for (size_t i = 0; i < n; i++, sector++, dst += 512) {
                 if (!mk6x_sdio_readSector(sector, dst)) {
                     return 0; // readSector will set errorCode.

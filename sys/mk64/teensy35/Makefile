@@ -1,6 +1,7 @@
 PARAM = -DTEENSY35
 PARAM += -DMK64FX512
 PARAM += -DUART1_ENABLED
+PARAM += -DUART2_ENABLED
 PARAM += -DSDIO_ENABLED
 PARAM += -DSD_ENABLED
 PARAM += -DGPIO_ENABLED
@@ -62,7 +63,7 @@ OBJS = exec_aout.o exec_conf.o exec_elf.o exec_script.o exec_subr.o \
 	mk64fx512.o startup_mk64fx512.o clock.o cons.o devsw.o fault.o \
 	signal.o swap.o syscall.o sysctl.o systick.o uart.o teensy.o \
 	memset.o memcpy-armv7m.o locore.o sys_ultoa.o sd.o sdio_card.o \
-	sdio.o mk6x_sdio.o 
+	sdio.o mk6x_sdio.o gpio.o 
 
 CFILES = $S/kern/exec_aout.c $S/kern/exec_conf.c $S/kern/exec_elf.c \
 	$S/kern/exec_script.c $S/kern/exec_subr.c $S/kern/init_main.c \
@@ -87,7 +88,7 @@ CFILES = $S/kern/exec_aout.c $S/kern/exec_conf.c $S/kern/exec_elf.c \
 	$S/mk64/sysctl.c $S/mk64/systick.c $S/mk64/uart.c \
 	$S/mk64/teensy.c $S/mk64/sys_ultoa.c $S/mk64/sd.c \
 	$S/mk64/sdio_card.c $S/mk64/sdio.c $S/mk64/mk6x_sdio.c \
-	swapunix.c 
+	$S/mk64/gpio.c swapunix.c 
 
 # load lines for config "xxx" will be emitted as:
 # xxx: ${SYSTEM_DEP} swapxxx.o
@@ -352,6 +353,9 @@ sdio.o: $S/mk64/sdio.c
 	${COMPILE_C}
 
 mk6x_sdio.o: $S/mk64/mk6x_sdio.c
+	${COMPILE_C}
+
+gpio.o: $S/mk64/gpio.c
 	${COMPILE_C}
 
 

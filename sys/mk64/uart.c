@@ -32,8 +32,9 @@
  *
  * UART_C1_LOOPS           0x80                Enable loopback
  * UART_C1_UARTSWAI        0x40                UART Stops in Wait Mode
- * UART_C1_RSRC            0x20                When LOOPS is set, the RSRC field determines
- *                                             the source for the receiver shift register input
+ * UART_C1_RSRC            0x20                When LOOPS is set, the RSRC field
+ *                                             determines the source for the
+ *                                             receiver shift register input
  * UART_C1_M               0x10                9-bit or 8-bit Mode Select
  * UART_C1_WAKE            0x08                Determines which condition wakes the UART
  * UART_C1_ILT             0x04                Idle Line Type Select
@@ -388,6 +389,7 @@ int uartclose(dev_t dev, int flag, int mode) {
     ttywflush(tp);
     ttyclose(tp);
 
+    /* alive &= ~(1 << unit); */
     
     return (0);
 }

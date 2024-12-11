@@ -80,7 +80,8 @@ static void port_isr(int port) {
 	if (*isfr & (1 << c)) {
 	    /* printf("gpio: pin %c%d: interrupt\n", 0x41 + port, c);*/
 	    /* printf("%8d si %d so %d \n", systick_ms, cnt.v_swpin, cnt.v_swpout); */
-	    uartstat();
+	    printf("\n");
+	    mpustat(1);
 	    sync();
 	    *isfr |= (1 << c);
 	}

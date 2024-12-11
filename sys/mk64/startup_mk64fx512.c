@@ -957,13 +957,12 @@ void ResetHandler(void)
 	}
 #endif
 
-	/**
-	 * wait just a bit before jumping in.
-	 *
-	 * (without this you may not get USB)
-	 */
-
 	main();
+
+	/**
+	 * copied verbatim from the stm32 port.
+	 */
+	
 	asm volatile("cpsid i");
 	asm volatile("movs r0, #0");
 	asm volatile("msr BASEPRI, r0");
@@ -971,9 +970,7 @@ void ResetHandler(void)
 	asm volatile("msr PSP, r0");
 	asm volatile("isb");
 	asm volatile("dsb");
-	asm volatile("mrs r0, CONTROL"); /* ...thus ARM is guaranteed to start in supervisor mode?
-				 * I suppose that's the only sensible way.
-				 */
+	asm volatile("mrs r0, CONTROL");
 	asm volatile("orrs r0, r0, #0x1");
 	asm volatile("orrs r0, r0, #0x2");
 	asm volatile("cpsie i");

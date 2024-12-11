@@ -15,7 +15,6 @@
  */
 
 #include <sys/param.h>
-#include <sys/systm.h>
 
 #include <machine/debug.h>
 #include <machine/sd.h>
@@ -69,15 +68,11 @@ card_read(int unit, unsigned int offset, char *data, unsigned int bcount)
     DEBUG("sdio:  bcount: %d\tnblocks: %d\tbcount \% %d: %d\n",
       bcount, nblocks, SECTSIZE, bcount % SECTSIZE);
 #endif
-
-    s = splbio();
     state = mk6x_sdio_readSectors(offset<<1, data, nblocks);
     
     if (!state) {
 	printf("sd%d: read error: %d\n", unit, mk6x_sdio_errorCode());
     }
-
-    splx(s);
 
     return state;
 }
@@ -101,8 +96,6 @@ card_write(int unit, unsigned offset, char *data, unsigned bcount)
     DEBUG("card_write: bcount: %d\tnblocks: %d\tbcount \% %d: %d\n",
       bcount, nblocks, SECTSIZE, bcount % SECTSIZE);
 #endif
-    s = splbio();
-
     state = mk6x_sdio_writeSectors(offset<<1, (void *)data, nblocks);
 
     if (!state) {
@@ -110,6 +103,8 @@ card_write(int unit, unsigned offset, char *data, unsigned bcount)
 	goto out;
     }
 
+    mk6x_sdio_syncDevice();
+    
 #if 0
     /* Wait for write completion. */
     int x = spl0();
@@ -118,10 +113,8 @@ card_write(int unit, unsigned offset, char *data, unsigned bcount)
     splx(x);
 
 #endif
-
  out:
-    splx(s);
-
+    
     return state;
 }
 
@@ -131,5 +124,5 @@ card_write(int unit, unsigned offset, char *data, unsigned bcount)
 void
 card_release(int unit)
 {
-
+    mk6x_sdio_syncDevice();
 }
