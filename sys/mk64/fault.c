@@ -251,15 +251,15 @@ void arm_fault(struct faultframe *frame, uint32_t fault_lr, int type) {
     if (MPU_CESR & 0xF8000000) {
 	printf("mpu error registers:\n");
 	printf(" sperr:\t0b" SPERR_F "\n", SPERR_B);
-	if (MPU_CESR & (1 << 27))
+	if (MPU_CESR & (1 << 31))
 	    printf(" ear0:\t0x%08x\tedr0:\t0x%08x\n", MPU_EAR0, MPU_EDR0);
-	if (MPU_CESR & (1 << 28))
+	if (MPU_CESR & (1 << 30))
 	    printf(" ear1:\t0x%08x\tedr1:\t0x%08x\n", MPU_EAR1, MPU_EDR1);
 	if (MPU_CESR & (1 << 29))
 	    printf(" ear2:\t0x%08x\tedr2:\t0x%08x\n", MPU_EAR2, MPU_EDR2);
-	if (MPU_CESR & (1 << 30))
+	if (MPU_CESR & (1 << 28))
 	    printf(" ear3:\t0x%08x\tedr3:\t0x%08x\n", MPU_EAR3, MPU_EDR3);
-	if (MPU_CESR & (1 << 31))
+	if (MPU_CESR & (1 << 27))
 	    printf(" ear4:\t0x%08x\tedr4:\t0x%08x\n", MPU_EAR4, MPU_EDR4);
     }
 
